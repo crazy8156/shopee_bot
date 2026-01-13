@@ -1,0 +1,6 @@
+gspread
+oauth2client
+requests
+selenium  # 如果你是用 Selenium 爬蟲 (注意：Render 免費版跑 Selenium 較吃力，建議用 API)
+flask     # 如果你需要 Webhook 監聽
+gunicorn  # Production 等級的 Server
