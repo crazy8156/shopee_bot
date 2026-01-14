@@ -129,9 +129,22 @@ def clean_id(val):
 @st.cache_resource
 def get_gspread_client():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-    creds = ServiceAccountCredentials.from_json_keyfile_name('service_account.json', scope)
-    client = gspread.authorize(creds)
-    return client
+    key_file = 'service_account.json'
+    
+    import os
+    if not os.path.exists(key_file):
+        st.error(f"❌ 嚴重錯誤：找不到金鑰檔案 `{key_file}`")
+        st.info("請確認您已在 Render 的 'Secret Files' 中新增此檔案，且名稱正確無誤。")
+        raise FileNotFoundError(f"Missing {key_file}")
+        
+    try:
+        creds = ServiceAccountCredentials.from_json_keyfile_name(key_file, scope)
+        client = gspread.authorize(creds)
+        return client
+    except Exception as e:
+        st.error(f"❌ 認證失敗：{e}")
+        st.code(str(e))
+        raise e
 
 # === 記憶庫 ===
 def get_memory_rules(client):
