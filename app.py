@@ -378,8 +378,11 @@ def auto_fill_costs_from_legacy(progress_bar):
     if updated_count > 0:
         updated_values = [df_new.columns.tolist()] + df_new.astype(str).values.tolist()
         new_sheet.clear(); new_sheet.update(updated_values)
+        progress_bar.progress(100, text="完成！")
         return f"✅ 成功救援 {updated_count} 筆成本資料！"
-    else: return "✅ 無需更新"
+    else: 
+        progress_bar.progress(100, text="完成！")
+        return "✅ 無需更新"
 
 def process_orders(df_sales, df_cost, progress_bar):
     required_cols = ['訂單編號', '商品名稱']
