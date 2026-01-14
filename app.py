@@ -423,25 +423,54 @@ def process_orders(df_sales, df_cost, progress_bar):
         df_upload_ready.loc[mask_special, '備註'] = "待人工確認"
         df_upload_ready.loc[mask_special, '總利潤'] = 0
         
+        # 建立成本查詢表 (for Smart Match)
+        name_cost_map = {}
+        if not df_cost.empty and '商品名稱' in df_cost.columns and '成本' in df_cost.columns:
+            for _, r in df_cost.iterrows():
+                name_cost_map[str(r['商品名稱']).strip()] = float(r['成本'])
+
         for idx, row in df_upload_ready[mask_special].iterrows():
             p_name = str(row['商品名稱']).strip()
             p_opt = str(row['商品選項名稱']).strip()
             
-            rule = None
+            found_cost = None
+            found_sku = None
+            source_type = ""
+            
             # 優先嘗試完全匹配 (名稱 + 規格)
             if (p_name, p_opt) in memory_rules:
                 rule = memory_rules[(p_name, p_opt)]
+                found_cost = rule['cost']
+                found_sku = rule['sku']
+                source_type = "記憶"
             # 嘗試反向兼容 (只匹配名稱，且記憶庫中規格為空)
             elif (p_name, "") in memory_rules:
                 rule = memory_rules[(p_name, "")]
+                found_cost = rule['cost']
+                found_sku = rule['sku']
+                source_type = "記憶"
             
-            if rule:
-                real_cost = rule['cost']
+            # === 智能匹配 (Smart Match) ===
+            # 如果記憶庫沒找到，嘗試直接從成本表 (df_cost) 找對應名稱
+            else:
+                # 嘗試組合: "商品名稱 [規格名稱]" (對應大量上傳的命名格式)
+                candidates = [p_name]
+                if p_opt: candidates.insert(0, f"{p_name} [{p_opt}]")
+                
+                for cand in candidates:
+                    if cand in name_cost_map:
+                        found_cost = name_cost_map[cand]
+                        found_sku = cand # 用組合名稱作為 SKU
+                        source_type = "智能"
+                        break
+            
+            if found_cost is not None:
+                real_cost = found_cost
                 income = float(row['進蝦皮錢包'])
                 real_profit = income - real_cost 
                 df_upload_ready.at[idx, '成本'] = real_cost
                 df_upload_ready.at[idx, '總利潤'] = real_profit
-                df_upload_ready.at[idx, '備註'] = f"已歸戶(自動): {rule['sku']}"
+                df_upload_ready.at[idx, '備註'] = f"已歸戶({source_type}): {found_sku}"
 
     for h in headers:
         if h not in df_upload_ready.columns: df_upload_ready[h] = ""
