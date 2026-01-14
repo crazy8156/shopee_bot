@@ -384,6 +384,18 @@ def auto_fill_costs_from_legacy(progress_bar):
         progress_bar.progress(100, text="完成！")
         return "✅ 無需更新"
 
+def normalize_name(name):
+    """
+    將名稱進行標準化處理，移除空白、全形轉半形、統一大小寫
+    """
+    if not isinstance(name, str): return str(name)
+    name = name.strip().lower()
+    # 移除所有空白 (包含全形空白)
+    name = name.replace(" ", "").replace("　", "")
+    # 標點符號標準化
+    name = name.replace("，", ",").replace("（", "(").replace("）", ")").replace("【", "[").replace("】", "]")
+    return name
+
 def process_orders(df_sales, df_cost, progress_bar):
     required_cols = ['訂單編號', '商品名稱']
     for col in required_cols:
@@ -427,10 +439,19 @@ def process_orders(df_sales, df_cost, progress_bar):
         df_upload_ready.loc[mask_special, '總利潤'] = 0
         
         # 建立成本查詢表 (for Smart Match)
+        # 建立成本查詢表 (for Smart Match)
         name_cost_map = {}
+        normalized_cost_map = {} # 新增：標準化查詢表
+        
         if not df_cost.empty and '商品名稱' in df_cost.columns and '成本' in df_cost.columns:
             for _, r in df_cost.iterrows():
-                name_cost_map[str(r['商品名稱']).strip()] = float(r['成本'])
+                raw_name = str(r['商品名稱']).strip()
+                cost_val = float(r['成本'])
+                name_cost_map[raw_name] = cost_val
+                
+                # 建立模糊比對鍵值
+                norm_name = normalize_name(raw_name)
+                normalized_cost_map[norm_name] = {'cost': cost_val, 'sku': raw_name}
 
         for idx, row in df_upload_ready[mask_special].iterrows():
             p_name = str(row['商品名稱']).strip()
@@ -456,15 +477,25 @@ def process_orders(df_sales, df_cost, progress_bar):
             # === 智能匹配 (Smart Match) ===
             # 如果記憶庫沒找到，嘗試直接從成本表 (df_cost) 找對應名稱
             else:
-                # 嘗試組合: "商品名稱 [規格名稱]" (對應大量上傳的命名格式)
-                candidates = [p_name]
-                if p_opt: candidates.insert(0, f"{p_name} [{p_opt}]")
+                # 嘗試組合: "商品名稱 [規格名稱]", "商品名稱"
+                candidates = []
+                if p_opt: candidates.append(f"{p_name} [{p_opt}]")
+                candidates.append(p_name)
                 
                 for cand in candidates:
+                    # 方法 A: 精確比對
                     if cand in name_cost_map:
                         found_cost = name_cost_map[cand]
-                        found_sku = cand # 用組合名稱作為 SKU
+                        found_sku = cand 
                         source_type = "智能"
+                        break
+                    
+                    # 方法 B: 模糊比對 (忽略空白、標點)
+                    cand_norm = normalize_name(cand)
+                    if cand_norm in normalized_cost_map:
+                        found_cost = normalized_cost_map[cand_norm]['cost']
+                        found_sku = normalized_cost_map[cand_norm]['sku']
+                        source_type = "智能(模糊)"
                         break
             
             if found_cost is not None:
@@ -522,7 +553,7 @@ def update_special_order(order_sn, real_sku_name, real_cost, df_db, db_sheet):
 st.sidebar.markdown("### 🚀 功能選單")
 mode = st.sidebar.radio("", ["📊 前台戰情室", "⚙️ 後台管理", "🔍 成本神探"], label_visibility="collapsed")
 st.sidebar.markdown("---")
-st.sidebar.caption("Ver 9.3 | Update: 2026-01-14 13:10")
+st.sidebar.caption("Ver 9.4 | Update: 2026-01-14 13:20")
 
 if mode == "🔍 成本神探":
     st.title("🔍 成本神探")
