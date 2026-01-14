@@ -162,25 +162,48 @@ def get_memory_rules(client):
         try: sheet = client.open(COST_SHEET_NAME).worksheet(MEMORY_SHEET_NAME)
         except: 
             sh = client.open(COST_SHEET_NAME)
-            sheet = sh.add_worksheet(title=MEMORY_SHEET_NAME, rows=100, cols=3)
-            sheet.append_row(["蝦皮商品名稱", "真實SKU名稱", "真實成本"])
+            sheet = sh.add_worksheet(title=MEMORY_SHEET_NAME, rows=100, cols=4)
+            sheet.append_row(["蝦皮商品名稱", "蝦皮規格名稱", "真實SKU名稱", "真實成本"])
             return {}
+        
         data = sheet.get_all_values()
         if len(data) <= 1: return {}
         rules = {}
         for row in data[1:]:
-            if len(row) >= 3:
-                rules[row[0]] = {'sku': row[1], 'cost': float(row[2])}
+            # 支援舊版(3欄) 與 新版(4欄)
+            if len(row) >= 4:
+                # Key: (商品名稱, 規格名稱)
+                key = (row[0].strip(), row[1].strip())
+                rules[key] = {'sku': row[2], 'cost': float(row[3])}
+            elif len(row) == 3:
+                # 舊版資料，將規格視為空字串，或只對應名稱
+                key = (row[0].strip(), "")
+                rules[key] = {'sku': row[1], 'cost': float(row[2])}
         return rules
     except: return {}
 
-def save_memory_rule(client, shopee_name, real_sku, real_cost):
+def save_memory_rule(client, shopee_name, shopee_option, real_sku, real_cost):
     try:
         try: sheet = client.open(COST_SHEET_NAME).worksheet(MEMORY_SHEET_NAME)
-        except: sheet = client.open(COST_SHEET_NAME).add_worksheet(title=MEMORY_SHEET_NAME, rows=100, cols=3)
-        existing = sheet.col_values(1)
-        if shopee_name not in existing:
-            sheet.append_row([shopee_name, real_sku, real_cost])
+        except: sheet = client.open(COST_SHEET_NAME).add_worksheet(title=MEMORY_SHEET_NAME, rows=100, cols=4)
+        
+        shopee_name = str(shopee_name).strip()
+        shopee_option = str(shopee_option).strip()
+        
+        # 檢查是否已存在 (避免重複)
+        data = sheet.get_all_values()
+        exists = False
+        for row in data:
+            if len(row) >= 4:
+                if row[0].strip() == shopee_name and row[1].strip() == shopee_option:
+                    exists = True; break
+            elif len(row) == 3:
+                if row[0].strip() == shopee_name and shopee_option == "":
+                    exists = True; break
+        
+        if not exists:
+            # 寫入格式: 名稱, 規格, 真實SKU, 真實成本
+            sheet.append_row([shopee_name, shopee_option, real_sku, real_cost])
             return True
     except: pass
     return False
@@ -267,6 +290,7 @@ def load_sales_report(uploaded_file):
         for col in df.columns:
             if "撥款金額" in col or "進蝦皮錢包" in col: mapping[col] = "進蝦皮錢包"
             if "商品編碼" in col and "規格" in col: mapping[col] = "蝦皮商品編碼"
+            if "規格名稱" in col: mapping[col] = "商品選項名稱" # 新增映射
         df.rename(columns=mapping, inplace=True)
         if '蝦皮商品編碼' in df.columns: df['蝦皮商品編碼'] = df['蝦皮商品編碼'].apply(clean_id)
         df = df.drop_duplicates()
@@ -401,8 +425,17 @@ def process_orders(df_sales, df_cost, progress_bar):
         
         for idx, row in df_upload_ready[mask_special].iterrows():
             p_name = str(row['商品名稱']).strip()
-            if p_name in memory_rules:
-                rule = memory_rules[p_name]
+            p_opt = str(row['商品選項名稱']).strip()
+            
+            rule = None
+            # 優先嘗試完全匹配 (名稱 + 規格)
+            if (p_name, p_opt) in memory_rules:
+                rule = memory_rules[(p_name, p_opt)]
+            # 嘗試反向兼容 (只匹配名稱，且記憶庫中規格為空)
+            elif (p_name, "") in memory_rules:
+                rule = memory_rules[(p_name, "")]
+            
+            if rule:
                 real_cost = rule['cost']
                 income = float(row['進蝦皮錢包'])
                 real_profit = income - real_cost 
@@ -457,7 +490,7 @@ def update_special_order(order_sn, real_sku_name, real_cost, df_db, db_sheet):
 st.sidebar.markdown("### 🚀 功能選單")
 mode = st.sidebar.radio("", ["📊 前台戰情室", "⚙️ 後台管理", "🔍 成本神探"], label_visibility="collapsed")
 st.sidebar.markdown("---")
-st.sidebar.caption("Shopee Bot v8.8 | Designed for 達麗")
+st.sidebar.caption("Ver 8.9 | Update: 2026-01-14 11:00")
 
 if mode == "🔍 成本神探":
     st.title("🔍 成本神探")
@@ -488,6 +521,10 @@ elif mode == "📊 前台戰情室":
             for c in ['售價', '成本', '數量', '總利潤', '進蝦皮錢包']:
                 if c in df_all.columns: df_all[c] = pd.to_numeric(df_all[c].astype(str).str.replace(',',''), errors='coerce').fillna(0)
         else: st.warning("資料庫目前為空"); st.stop()
+    except gspread.exceptions.SpreadsheetNotFound:
+        st.error(f"❌ 找不到 Google Sheet：『{DB_SHEET_NAME}』")
+        st.info("請確認：\n1. 是否已建立名為『蝦皮訂單總表』的試算表\n2. 是否已將試算表共用給機器人信箱")
+        st.stop()
     except Exception as e:
         st.error(f"讀取 Google Sheet 失敗。\n錯誤訊息：{e}")
         st.stop()
@@ -659,9 +696,12 @@ elif mode == "⚙️ 後台管理":
                     for idx, row in pending.iterrows():
                         with st.container():
                             st.markdown(f"""
-                            <div style="background:#f8f9fa; padding:15px; border-radius:10px; margin-bottom:10px; border:1px solid #eee;">
-                                <div style="font-weight:bold; color:#d63384;">{row['商品名稱']}</div>
-                                <div style="font-size:0.9em; color:#666;">訂單: {row['訂單編號']} | 金額: ${row['售價']}</div>
+                            <div style="background:#f8f9fa; padding:15px; border-radius:10px; margin-bottom:10px; border:1px solid #ddd; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                                <div style="font-weight:bold; color:#d63384; font-size: 1.05rem; margin-bottom: 8px;">{row['商品名稱']}</div>
+                                <div style="background: #e7f5ff; color: #004085; padding: 4px 8px; border-radius: 4px; display: inline-block; font-weight: 600; font-size: 0.9rem; margin-bottom: 8px;">
+                                    🔹 規格: {row.get('商品選項名稱', '無規格') if row.get('商品選項名稱') else '無規格'}
+                                </div>
+                                <div style="font-size:0.85rem; color:#666; margin-top: 4px;">訂單: {row['訂單編號']} | 金額: <span style="color: #28a745; font-weight:bold;">${row['售價']}</span></div>
                             </div>
                             """, unsafe_allow_html=True)
                             
@@ -683,7 +723,7 @@ elif mode == "⚙️ 後台管理":
                                             if remember_me:
                                                 if "7777" in row['商品名稱']: st.warning("⚠️ 為了安全，無法自動記憶 7777！")
                                                 else:
-                                                    save_memory_rule(client, row['商品名稱'], real_name, real_cost)
+                                                    save_memory_rule(client, row['商品名稱'], row['商品選項名稱'], real_name, real_cost)
                                             st.toast("✅ 歸戶成功！", icon="🎉")
                                             time.sleep(1)
                                             st.rerun()
