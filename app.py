@@ -519,7 +519,7 @@ def update_special_order(order_sn, real_sku_name, real_cost, df_db, db_sheet):
 st.sidebar.markdown("### 🚀 功能選單")
 mode = st.sidebar.radio("", ["📊 前台戰情室", "⚙️ 後台管理", "🔍 成本神探"], label_visibility="collapsed")
 st.sidebar.markdown("---")
-st.sidebar.caption("Ver 8.9 | Update: 2026-01-14 11:00")
+st.sidebar.caption("Ver 9.0 (Smart Match) | Update: 2026-01-14 11:40")
 
 if mode == "🔍 成本神探":
     st.title("🔍 成本神探")
