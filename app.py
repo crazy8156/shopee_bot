@@ -602,7 +602,7 @@ def update_special_order(order_sn, real_sku_name, real_cost, df_db, db_sheet):
 st.sidebar.markdown("### 🚀 功能選單")
 mode = st.sidebar.radio("", ["📊 前台戰情室", "⚙️ 後台管理", "🔍 成本神探"], label_visibility="collapsed")
 st.sidebar.markdown("---")
-st.sidebar.caption("Ver 9.6 | Update: 2026-01-14 13:50")
+st.sidebar.caption("Ver 9.7 (Stable) | Update: 2026-01-14 14:05")
 
 if mode == "🔍 成本神探":
     st.title("🔍 成本神探")
@@ -847,7 +847,7 @@ elif mode == "⚙️ 後台管理":
                                     min_value=0, 
                                     step=1, 
                                     format="%d",
-                                    key=f"cost_{row['訂單編號']}_{hash(real_item)}", 
+                                    key=f"cost_{row['訂單編號']}_{str(real_item)}", 
                                     label_visibility="collapsed"
                                 )
 
