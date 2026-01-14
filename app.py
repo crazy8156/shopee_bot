@@ -522,7 +522,7 @@ def update_special_order(order_sn, real_sku_name, real_cost, df_db, db_sheet):
 st.sidebar.markdown("### 🚀 功能選單")
 mode = st.sidebar.radio("", ["📊 前台戰情室", "⚙️ 後台管理", "🔍 成本神探"], label_visibility="collapsed")
 st.sidebar.markdown("---")
-st.sidebar.caption("Ver 9.0 (Smart Match) | Update: 2026-01-14 11:40")
+st.sidebar.caption("Ver 9.1 | Update: 2026-01-14 12:00")
 
 if mode == "🔍 成本神探":
     st.title("🔍 成本神探")
@@ -733,7 +733,10 @@ elif mode == "⚙️ 後台管理":
                                 <div style="background: #e7f5ff; color: #004085; padding: 4px 8px; border-radius: 4px; display: inline-block; font-weight: 600; font-size: 0.9rem; margin-bottom: 8px;">
                                     🔹 規格: {row.get('商品選項名稱', '無規格') if row.get('商品選項名稱') else '無規格'}
                                 </div>
-                                <div style="font-size:0.85rem; color:#666; margin-top: 4px;">訂單: {row['訂單編號']} | 金額: <span style="color: #28a745; font-weight:bold;">${row['售價']}</span></div>
+                                <div style="font-size:0.85rem; color:#666; margin-top: 4px;">
+                                    訂單: <a href="https://seller.shopee.tw/portal/sale/order/{row['訂單編號']}" target="_blank" style="text-decoration:none;color:#0d6efd;border-bottom:1px dashed #0d6efd;margin-right:5px;">{row['訂單編號']} 🔗</a> 
+                                    | 金額: <span style="color: #28a745; font-weight:bold;">${row['售價']}</span>
+                                </div>
                             </div>
                             """, unsafe_allow_html=True)
                             
