@@ -142,7 +142,17 @@ def get_gspread_client():
         client = gspread.authorize(creds)
         return client
     except Exception as e:
-        st.error(f"❌ 認證失敗：{e}")
+        # 嘗試讀取 JSON 內容來除錯
+        try:
+            import json
+            with open(key_file, 'r') as f:
+                creds_data = json.load(f)
+                pid = creds_data.get('project_id', 'Unknown')
+                st.error(f"❌ 認證失敗 (Project ID: {pid})")
+        except:
+            st.error(f"❌ 認證失敗 (無法讀取 Project ID)")
+            
+        st.error(f"詳細錯誤訊息：{e}")
         st.code(str(e))
         raise e
 
