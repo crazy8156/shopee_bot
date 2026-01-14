@@ -208,6 +208,55 @@ def save_memory_rule(client, shopee_name, shopee_option, real_sku, real_cost):
     except: pass
     return False
 
+def update_master_cost_sheet(client, real_sku_name, new_cost):
+    """
+    更新主成本表 (Cost Sheet) 中的成本
+    由於 Menu_Label 是 "Name | Cost"，我們主要透過 Name 來比對。
+    此功能會搜尋商品名稱並更新其成本欄位。
+    """
+    try:
+        sheet = client.open(COST_SHEET_NAME).sheet1
+        # 讀取所有資料 (注意：如果資料量非常大，這樣全讀可能會慢，但在普通規模下這是最安全的)
+        data = sheet.get_all_values()
+        if not data: return False
+        
+        headers = data[0]
+        try: 
+            # 嘗試找尋正確的欄位 index
+            name_idx = headers.index('商品名稱') if '商品名稱' in headers else headers.index('商品')
+            cost_idx = headers.index('成本')
+        except: return False
+        
+        # real_sku_name 從介面傳來是 "商品名稱 | 成本$XXX" 或 "商品名稱"
+        if " | 成本$" in real_sku_name:
+            target_name = real_sku_name.split(' | 成本$')[0].strip()
+        else:
+            target_name = real_sku_name.strip()
+            
+        cell_to_update = None
+        
+        # 尋找目標行 (從資料的第2行開始，對應 sheet row 2)
+        # sheet.update_cell 接受 (row, col) 其中 row 是從1開始
+        for i, row in enumerate(data):
+            if i == 0: continue # Skip header
+            
+            # 確保不會 index out of range
+            if len(row) > name_idx:
+                row_name_val = str(row[name_idx]).strip()
+                # 簡單字串比對
+                if row_name_val == target_name:
+                    cell_to_update = (i + 1, cost_idx + 1)
+                    break
+        
+        if cell_to_update:
+            sheet.update_cell(cell_to_update[0], cell_to_update[1], new_cost)
+            return True
+        return False
+        
+    except Exception as e:
+        print(f"Error updating master cost: {e}")
+        return False
+
 # ==========================================
 # 3. 資料讀取
 # ==========================================
@@ -553,7 +602,7 @@ def update_special_order(order_sn, real_sku_name, real_cost, df_db, db_sheet):
 st.sidebar.markdown("### 🚀 功能選單")
 mode = st.sidebar.radio("", ["📊 前台戰情室", "⚙️ 後台管理", "🔍 成本神探"], label_visibility="collapsed")
 st.sidebar.markdown("---")
-st.sidebar.caption("Ver 9.4 | Update: 2026-01-14 13:20")
+st.sidebar.caption("Ver 9.5 | Update: 2026-01-14 13:40")
 
 if mode == "🔍 成本神探":
     st.title("🔍 成本神探")
@@ -783,22 +832,43 @@ elif mode == "⚙️ 後台管理":
                             with c_sel:
                                 real_item = st.selectbox("選擇真實商品", options, key=f"s_{row['訂單編號']}", label_visibility="collapsed")
                             
+                            # 取得目前選擇商品的預設成本
+                            default_cost = 0.0
+                            if real_item != "請選擇對應的真實商品...":
+                                if real_item in cost_dict:
+                                    default_cost = cost_dict[real_item]
+
                             with c_opt:
-                                remember_me = st.checkbox("以後自動歸戶", key=f"chk_{row['訂單編號']}")
-                                
+                                # 讓使用者可以編輯成本 (如果有誤或是0)
+                                final_cost = st.number_input("確認成本", value=float(default_cost), min_value=0.0, step=1.0, key=f"cost_{row['訂單編號']}", label_visibility="collapsed")
+
                             with c_act:
                                 if st.button("確認歸戶", key=f"b_{row['訂單編號']}", type="primary"):
-                                    if "請選擇" not in real_item:
-                                        real_cost = cost_dict[real_item]
-                                        real_name = real_item.split(" |")[0]
+                                    if "請選擇" in real_item:
+                                        st.toast("❌ 請選擇真實商品")
+                                    else:
+                                        real_sku_name = real_item.split(" |")[0].strip()
+                                        
                                         with st.spinner("寫入中..."):
-                                            update_special_order(row['訂單編號'], real_name, real_cost, df_db, db_sheet)
-                                            if remember_me:
-                                                if "7777" in row['商品名稱']: st.warning("⚠️ 為了安全，無法自動記憶 7777！")
-                                                else:
-                                                    save_memory_rule(client, row['商品名稱'], row['商品選項名稱'], real_name, real_cost)
-                                            st.toast("✅ 歸戶成功！", icon="🎉")
-                                            time.sleep(1)
+                                            if update_special_order(row['訂單編號'], real_sku_name, final_cost, df_db, db_sheet):
+                                                remember_me = st.session_state.get(f"chk_{row['訂單編號']}", False)
+                                                
+                                                if remember_me:
+                                                    if "7777" in str(row['商品名稱']): st.warning("⚠️ 為了安全，無法自動記憶 7777！")
+                                                    else:
+                                                        save_memory_rule(client, row['商品名稱'], row.get('商品選項名稱', ''), real_sku_name, final_cost)
+                                                
+                                                # === 關鍵新功能: 同步更新主成本表 ===
+                                                # 如果使用者修改了成本 (或原本是0)，順便更新回去商品編碼表
+                                                if final_cost != default_cost or default_cost == 0:
+                                                    update_master_cost_sheet(client, real_item, final_cost)
+                                                    st.toast(f"✅ 已同步更新商品成本表: ${final_cost}")
+
+                                                st.toast("✅ 歸戶成功！", icon="🎉")
+                                                time.sleep(1)
+                                                st.rerun()
+                                            else:
+                                                st.error("更新失敗")
                                             st.rerun()
                                     else:
                                         st.error("請選擇商品")
