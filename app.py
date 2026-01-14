@@ -602,7 +602,7 @@ def update_special_order(order_sn, real_sku_name, real_cost, df_db, db_sheet):
 st.sidebar.markdown("### 🚀 功能選單")
 mode = st.sidebar.radio("", ["📊 前台戰情室", "⚙️ 後台管理", "🔍 成本神探"], label_visibility="collapsed")
 st.sidebar.markdown("---")
-st.sidebar.caption("Ver 9.5 | Update: 2026-01-14 13:40")
+st.sidebar.caption("Ver 9.6 | Update: 2026-01-14 13:50")
 
 if mode == "🔍 成本神探":
     st.title("🔍 成本神探")
@@ -840,7 +840,16 @@ elif mode == "⚙️ 後台管理":
 
                             with c_opt:
                                 # 讓使用者可以編輯成本 (如果有誤或是0)
-                                final_cost = st.number_input("確認成本", value=float(default_cost), min_value=0.0, step=1.0, key=f"cost_{row['訂單編號']}", label_visibility="collapsed")
+                                # 技巧: 為了讓 selectbox 改變時 number_input 自動更新，我們把選擇的項目加入 key 中
+                                final_cost = st.number_input(
+                                    "確認成本", 
+                                    value=int(default_cost), 
+                                    min_value=0, 
+                                    step=1, 
+                                    format="%d",
+                                    key=f"cost_{row['訂單編號']}_{hash(real_item)}", 
+                                    label_visibility="collapsed"
+                                )
 
                             with c_act:
                                 if st.button("確認歸戶", key=f"b_{row['訂單編號']}", type="primary"):
