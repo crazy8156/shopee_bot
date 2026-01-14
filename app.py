@@ -845,7 +845,7 @@ elif mode == "⚙️ 後台管理":
                             with c_act:
                                 if st.button("確認歸戶", key=f"b_{row['訂單編號']}", type="primary"):
                                     if "請選擇" in real_item:
-                                        st.toast("❌ 請選擇真實商品")
+                                        st.error("❌ 請選擇真實商品")
                                     else:
                                         real_sku_name = real_item.split(" |")[0].strip()
                                         
@@ -858,8 +858,6 @@ elif mode == "⚙️ 後台管理":
                                                     else:
                                                         save_memory_rule(client, row['商品名稱'], row.get('商品選項名稱', ''), real_sku_name, final_cost)
                                                 
-                                                # === 關鍵新功能: 同步更新主成本表 ===
-                                                # 如果使用者修改了成本 (或原本是0)，順便更新回去商品編碼表
                                                 if final_cost != default_cost or default_cost == 0:
                                                     update_master_cost_sheet(client, real_item, final_cost)
                                                     st.toast(f"✅ 已同步更新商品成本表: ${final_cost}")
@@ -869,9 +867,6 @@ elif mode == "⚙️ 後台管理":
                                                 st.rerun()
                                             else:
                                                 st.error("更新失敗")
-                                            st.rerun()
-                                    else:
-                                        st.error("請選擇商品")
                         st.markdown("---")
 
         with tab3:
