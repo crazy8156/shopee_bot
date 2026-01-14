@@ -465,7 +465,9 @@ elif mode == "📊 前台戰情室":
             for c in ['售價', '成本', '數量', '總利潤', '進蝦皮錢包']:
                 if c in df_all.columns: df_all[c] = pd.to_numeric(df_all[c].astype(str).str.replace(',',''), errors='coerce').fillna(0)
         else: st.warning("資料庫目前為空"); st.stop()
-    except: st.error("讀取 Google Sheet 失敗，請檢查權限或網路。"); st.stop()
+    except Exception as e:
+        st.error(f"讀取 Google Sheet 失敗。\n錯誤訊息：{e}")
+        st.stop()
 
     if df_all is not None:
         if '備註' not in df_all.columns: df_all['備註'] = ""
