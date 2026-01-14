@@ -20,7 +20,97 @@ SPECIAL_PRODUCTS = ["7777下單信用卡專區", "chatgpt續約區", "ChatGPT", 
 EXCEL_PWD = "287667"   
 ADMIN_PWD = "888888"   
 
-st.set_page_config(page_title="蝦皮全自動財務系統 v8.7", layout="wide")
+st.set_page_config(
+    page_title="蝦皮全自動財務系統 v8.8", 
+    page_icon="🦐",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# ==========================================
+# 0. UI 美化設定 (Custom CSS)
+# ==========================================
+def inject_custom_css():
+    st.markdown("""
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+        
+        /* 全域字體設定 */
+        html, body, [class*="css"] {
+            font-family: 'Inter', 'Microsoft JhengHei', system-ui, -apple-system, sans-serif;
+        }
+        
+        /* 標題漸層效果 */
+        h1 {
+            background: -webkit-linear-gradient(45deg, #FF512F, #DD2476);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 800 !important;
+            padding-bottom: 10px;
+        }
+
+        /* 側邊欄優化 */
+        section[data-testid="stSidebar"] {
+            background-color: #f8f9fa;
+        }
+        
+        /* 指標卡片 (Metric Cards) */
+        .metric-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            border: 1px solid #e0e0e0;
+            text-align: center;
+            transition: transform 0.2s;
+        }
+        .metric-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px rgba(0,0,0,0.1);
+        }
+        .metric-label {
+            color: #6c757d;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+        .metric-value {
+            color: #2c3e50;
+            font-size: 1.8rem;
+            font-weight: 800;
+            margin: 0;
+        }
+        .metric-sub {
+            font-size: 0.8rem;
+            color: #28a745;
+            margin-top: 5px;
+        }
+        
+        /* 表格優化 */
+        [data-testid="stDataFrame"] {
+            border: 1px solid #eee;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        /* 按鈕優化 */
+        .stButton button {
+            border-radius: 8px;
+            font-weight: 600;
+            border: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: all 0.2s;
+        }
+        .stButton button:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+            transform: translateY(-1px);
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+inject_custom_css()
 
 # ==========================================
 # 2. 工具函式
@@ -161,7 +251,7 @@ def load_sales_report(uploaded_file):
     except Exception as e: st.error(f"Excel 解析失敗: {e}"); return None
 
 # ==========================================
-# 4. 寫入邏輯 (V8.7: 增量更新 - 絕對不覆蓋舊資料)
+# 4. 寫入邏輯
 # ==========================================
 def sync_new_products(new_products_df, sheet, progress_bar):
     current_data = sheet.get_all_values()
@@ -179,7 +269,6 @@ def sync_new_products(new_products_df, sheet, progress_bar):
     return 0
 
 def auto_fill_costs_from_legacy(progress_bar):
-    """ V8.5: 聰明搜尋舊表 """
     client = get_gspread_client()
     progress_bar.progress(10, text=f"搜尋舊表『{LEGACY_SHEET_NAME}』...")
     try:
@@ -246,7 +335,6 @@ def auto_fill_costs_from_legacy(progress_bar):
     else: return "✅ 無需更新"
 
 def process_orders(df_sales, df_cost, progress_bar):
-    # 1. 基礎檢查與清理
     required_cols = ['訂單編號', '商品名稱']
     for col in required_cols:
         if col not in df_sales.columns: return f"❌ 失敗：報表找不到『{col}』。"
@@ -255,8 +343,7 @@ def process_orders(df_sales, df_cost, progress_bar):
     if '訂單狀態' in df_sales.columns:
         df_sales = df_sales[df_sales['訂單狀態'].astype(str).str.strip() != '不成立']
     
-    # 2. 計算成本與利潤 (這部分先針對上傳的資料算，稍後會過濾)
-    progress_bar.progress(30, text="新訂單計算...")
+    progress_bar.progress(30, text="計算利潤...")
     df_cost_slim = df_cost[['蝦皮商品編碼', '成本']]
     df_merged = pd.merge(df_sales, df_cost_slim, on='蝦皮商品編碼', how='left')
     
@@ -272,20 +359,17 @@ def process_orders(df_sales, df_cost, progress_bar):
 
     df_merged['總利潤'] = df_merged['進蝦皮錢包'] - (df_merged['成本'] * df_merged['數量'])
     
-    # 3. 讀取現有資料庫
     progress_bar.progress(50, text=f"比對 {DB_SHEET_NAME}...")
     client = get_gspread_client()
     try: db_sheet = client.open(DB_SHEET_NAME).sheet1
     except: return f"❌ 找不到資料庫：{DB_SHEET_NAME}"
     
-    # 準備格式
     headers = ['訂單編號', '訂單成立日期', '商品名稱', '商品選項名稱', '數量', '售價', '成交手續費', '金流與系統處理費', '其他服務費', '蝦皮付費總金額', '進蝦皮錢包', '成本', '總利潤', '蝦皮商品編碼', '資料備份時間', '備註']
     
     df_upload_ready = df_merged.copy()
     df_upload_ready['資料備份時間'] = get_taiwan_time().strftime("%Y-%m-%d %H:%M:%S")
     df_upload_ready['備註'] = "" 
     
-    # 套用記憶庫 (僅針對上傳的新資料)
     memory_rules = get_memory_rules(client)
     if '商品名稱' in df_upload_ready.columns:
         mask_special = df_upload_ready['商品名稱'].astype(str).apply(lambda x: any(sp in x for sp in SPECIAL_PRODUCTS))
@@ -307,23 +391,15 @@ def process_orders(df_sales, df_cost, progress_bar):
         if h not in df_upload_ready.columns: df_upload_ready[h] = ""
     df_upload_ready = df_upload_ready[headers].fillna('').astype(str)
     
-    # 4. 關鍵邏輯：增量更新 (不覆蓋)
     existing_data = db_sheet.get_all_values()
     
     if len(existing_data) <= 1:
-        # 資料庫是空的，直接寫入
         db_sheet.clear(); db_sheet.append_row(headers); db_sheet.append_rows(df_upload_ready.values.tolist())
         return f"✅ 初始化完成！新增 {len(df_upload_ready)} 筆。"
     else:
-        # 資料庫有東西
         df_existing = pd.DataFrame(existing_data[1:], columns=existing_data[0])
-        
-        # 抓出已經存在的訂單 ID
         existing_ids = set(df_existing['訂單編號'].astype(str).str.strip())
-        
-        # 過濾上傳的資料：只保留資料庫裡「沒有」的
         df_new_orders = df_upload_ready[~df_upload_ready['訂單編號'].astype(str).str.strip().isin(existing_ids)]
-        
         skipped_count = len(df_upload_ready) - len(df_new_orders)
         
         if not df_new_orders.empty:
@@ -333,10 +409,9 @@ def process_orders(df_sales, df_cost, progress_bar):
             return f"✅ 成功！新增 {len(df_new_orders)} 筆新訂單 (跳過 {skipped_count} 筆舊資料)。"
         else:
             progress_bar.progress(100, text="無新資料")
-            return f"✅ 沒事做！上傳的 {skipped_count} 筆訂單資料庫裡都有了 (已自動保留您的舊紀錄)。"
+            return f"✅ 沒事做！全部資料已存在 (跳過 {skipped_count} 筆)。"
 
 def update_special_order(order_sn, real_sku_name, real_cost, df_db, db_sheet):
-    """ 歸戶邏輯 """
     idx = df_db.index[df_db['訂單編號'] == order_sn].tolist()
     if not idx: return False
     idx = idx[0]
@@ -356,11 +431,14 @@ def update_special_order(order_sn, real_sku_name, real_cost, df_db, db_sheet):
 # ==========================================
 # 5. 主程式
 # ==========================================
-st.sidebar.title("🚀 蝦皮財務系統 v8.7")
-mode = st.sidebar.radio("模式", ["📊 前台戰情室", "⚙️ 後台管理", "🔍 成本神探 (抓錯用)"])
+st.sidebar.markdown("### 🚀 功能選單")
+mode = st.sidebar.radio("", ["📊 前台戰情室", "⚙️ 後台管理", "🔍 成本神探"], label_visibility="collapsed")
+st.sidebar.markdown("---")
+st.sidebar.caption("Shopee Bot v8.8 | Designed for 達麗")
 
-if mode == "🔍 成本神探 (抓錯用)":
+if mode == "🔍 成本神探":
     st.title("🔍 成本神探")
+    st.info("此功能用於快速檢查成本表的商品編碼狀態。")
     target_id = st.text_input("輸入蝦皮商品編碼")
     if target_id:
         with st.spinner(f"正在掃描『{COST_SHEET_NAME}』..."):
@@ -374,8 +452,10 @@ if mode == "🔍 成本神探 (抓錯用)":
 
 elif mode == "📊 前台戰情室":
     st.title("📊 蝦皮營業額戰情室")
-    if st.sidebar.button("🔄 刷新"): st.cache_data.clear(); st.rerun()
     
+    if st.sidebar.button("🔄 刷新資料"):
+        st.cache_data.clear(); st.rerun()
+
     client = get_gspread_client()
     try:
         sheet = client.open(DB_SHEET_NAME).sheet1
@@ -384,21 +464,26 @@ elif mode == "📊 前台戰情室":
             df_all = pd.DataFrame(data[1:], columns=data[0])
             for c in ['售價', '成本', '數量', '總利潤', '進蝦皮錢包']:
                 if c in df_all.columns: df_all[c] = pd.to_numeric(df_all[c].astype(str).str.replace(',',''), errors='coerce').fillna(0)
-        else: st.warning("無資料"); st.stop()
-    except: st.error("讀取失敗"); st.stop()
+        else: st.warning("資料庫目前為空"); st.stop()
+    except: st.error("讀取 Google Sheet 失敗，請檢查權限或網路。"); st.stop()
 
     if df_all is not None:
         if '備註' not in df_all.columns: df_all['備註'] = ""
         if '訂單成立日期' in df_all.columns:
             df_all['訂單成立日期'] = pd.to_datetime(df_all['訂單成立日期'], errors='coerce')
             df_all['日期標籤'] = df_all['訂單成立日期'].dt.strftime('%Y-%m-%d')
-        else: st.error("缺日期欄位"); st.stop()
+        else: st.error("資料庫缺少『訂單成立日期』欄位"); st.stop()
 
-        dates = sorted(df_all['日期標籤'].dropna().unique(), reverse=True)
-        sel_date = st.selectbox("📅 選擇日期", dates) if dates else None
+        # 日期篩選器
+        col_date, col_space = st.columns([1, 3])
+        with col_date:
+            dates = sorted(df_all['日期標籤'].dropna().unique(), reverse=True)
+            sel_date = st.selectbox("📅 選擇營業日期", dates) if dates else None
         
         if sel_date:
             df_day = df_all[df_all['日期標籤'] == sel_date]
+            
+            # 分離特殊與正常訂單
             mask_special = (
                 df_day['商品名稱'].astype(str).apply(lambda x: any(sp in x for sp in SPECIAL_PRODUCTS)) & 
                 (~df_day['備註'].astype(str).str.contains("已歸戶"))
@@ -406,56 +491,127 @@ elif mode == "📊 前台戰情室":
             df_special = df_day[mask_special]
             df_normal = df_day[~df_day.index.isin(df_special.index)]
             
+            # 計算核心指標
             total_rev = df_normal['售價'].sum()
             total_cost = (df_normal['成本'] * df_normal['數量']).sum()
             total_gp = df_normal['總利潤'].sum()
             margin = (total_gp / total_rev * 100) if total_rev > 0 else 0
             
-            k1, k2, k3, k4 = st.columns(4)
-            k1.metric("💰 營收 (含歸戶)", f"${total_rev:,.0f}")
-            k2.metric("📉 成本", f"${total_cost:,.0f}")
-            k3.metric("💸 毛利", f"${total_gp:,.0f}")
-            k4.metric("📊 毛利率", f"{margin:.1f}%")
+            # --- 視覺化指標卡片 ---
+            cols = st.columns(4)
+            metrics = [
+                ("💰 當日營收", f"${total_rev:,.0f}", ""),
+                ("📉 商品成本", f"${total_cost:,.0f}", ""),
+                ("💸 淨毛利", f"${total_gp:,.0f}", "核心獲利"),
+                ("📊 毛利率", f"{margin:.1f}%", "Profit Margin")
+            ]
+            
+            for col, (label, val, sub) in zip(cols, metrics):
+                with col:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-label">{label}</div>
+                        <div class="metric-value">{val}</div>
+                        <div class="metric-sub">{sub}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            st.markdown("---")
+            
+            # --- 特殊訂單警示 ---
+            if not df_special.empty:
+                st.error(f"⚠️ 發現 {len(df_special)} 筆訂單尚未歸戶 (不會計入毛利)")
+                st.dataframe(
+                    df_special[['訂單編號', '商品名稱', '售價', '備註']],
+                    hide_index=True,
+                    use_container_width=True
+                )
+            
+            # --- 視覺化圖表區 ---
+            c_chart1, c_chart2 = st.columns(2)
+            
+            with c_chart1:
+                st.markdown("##### 🏆 熱銷商品 (依營收)")
+                if not df_normal.empty:
+                    top_items = df_normal.groupby('商品名稱')['售價'].sum().nlargest(5).sort_values()
+                    st.bar_chart(top_items, color="#FF512F")
+                else:
+                    st.info("無資料")
+                    
+            with c_chart2:
+                st.markdown("##### 💎 高毛利商品 (依利潤)")
+                if not df_normal.empty:
+                    top_profits = df_normal.groupby('商品名稱')['總利潤'].sum().nlargest(5).sort_values()
+                    st.bar_chart(top_profits, color="#DD2476")
+                else:
+                    st.info("無資料")
             
             st.divider()
-            if not df_special.empty:
-                st.warning(f"⚠️ 有 {len(df_special)} 筆訂單未歸戶"); st.dataframe(df_special[['訂單編號', '商品名稱', '售價', '備註']])
+
+            # --- 詳細資料表 ---
+            st.subheader("📦 銷售明細表")
+            cols_show = ['商品名稱', '數量', '售價', '成本', '總利潤', '訂單編號']
+            final_show = [c for c in cols_show if c in df_normal.columns]
             
-            st.subheader("📦 銷售明細")
-            cols = ['訂單編號', '商品名稱', '數量', '售價', '成本', '總利潤', '備註']
-            final = [c for c in cols if c in df_normal.columns]
-            st.dataframe(df_normal[final], use_container_width=True)
+            st.dataframe(
+                df_normal[final_show],
+                use_container_width=True,
+                column_config={
+                    "售價": st.column_config.NumberColumn("售價", format="$%d"),
+                    "成本": st.column_config.NumberColumn("成本", format="$%d"),
+                    "總利潤": st.column_config.NumberColumn("總利潤", format="$%d"),
+                    "數量": st.column_config.NumberColumn("數量", width="small"),
+                },
+                hide_index=True
+            )
 
 elif mode == "⚙️ 後台管理":
-    st.title("⚙️ 後台管理")
-    if st.text_input("密碼", type="password") == ADMIN_PWD:
-        tab1, tab2, tab3 = st.tabs(["📥 報表上傳", "🔗 特殊訂單歸戶", "🛠️ 商品同步"])
+    st.title("⚙️ 後台管理中心")
+    
+    pwd = st.text_input("🔑 請輸入管理員密碼", type="password")
+    
+    if pwd == ADMIN_PWD:
+        # 使用更美觀的 Tabs
+        st.markdown("###")
+        tab1, tab2, tab3 = st.tabs(["📥 訂單上傳", "🔗 歸戶系統", "🛠️ 商品維護"])
 
         with tab1:
-            st.subheader("Step 1: 上傳 Order.all")
-            df_cost, _ = load_cloud_cost_table()
-            if df_cost is not None:
-                st.success(f"✅ 成功讀取 {len(df_cost)} 筆成本資料")
+            st.info("請上傳蝦皮匯出的 `Order.all.xlsx` 報表，系統會自動計算成本與利潤。")
+            
+            c1, c2 = st.columns([1, 1])
+            with c1:
+                # 檢查成本表狀態
+                st.markdown("**系統狀態檢測**")
+                df_cost, _ = load_cloud_cost_table()
+                if df_cost is not None:
+                    st.success(f"✅ 成本表連線正常 (共 {len(df_cost)} 筆資料)")
+                else:
+                    st.error("❌ 無法讀取成本表")
+
+            with c2:
+                sales_file = st.file_uploader("拖曳或點擊上傳 Excel", type=['xlsx'])
                 
-                sales_file = st.file_uploader("選擇 Excel", type=['xlsx'])
-                if sales_file and st.button("🚀 執行"):
-                    bar = st.progress(0, "開始...")
+            if sales_file:
+                if st.button("🚀 開始分析訂單", type="primary", use_container_width=True):
+                    bar = st.progress(0, "初始化中...")
                     df_sales = load_sales_report(sales_file)
                     if df_sales is not None:
                         res = process_orders(df_sales, df_cost, bar)
-                        st.success(res); st.cache_data.clear()
+                        time.sleep(0.5)
+                        if "成功" in res: st.success(res)
+                        else: st.warning(res)
+                        st.cache_data.clear()
 
         with tab2:
-            st.subheader("Step 2: 特殊訂單歸戶")
-            st.info("💡 勾選「記住」，下次自動處理！")
+            st.markdown("#### 🔗 特殊訂單歸戶 (信用卡/補差價/客製化)")
             
             client = get_gspread_client()
             try:
                 db_sheet = client.open(DB_SHEET_NAME).sheet1
                 data = db_sheet.get_all_values()
                 if len(data) > 1: df_db = pd.DataFrame(data[1:], columns=data[0])
-                else: st.warning("無資料"); st.stop()
-            except: st.error("讀取失敗"); st.stop()
+                else: st.warning("目前無訂單資料"); st.stop()
+            except: st.error("資料讀取失敗"); st.stop()
             
             if '備註' not in df_db.columns: df_db['備註'] = ""
             mask = (
@@ -464,57 +620,75 @@ elif mode == "⚙️ 後台管理":
             )
             pending = df_db[mask]
             
-            if pending.empty: st.success("✅ 全部歸戶完成！")
+            if pending.empty:
+                st.balloons()
+                st.success("🎉 太棒了！目前所有特殊訂單都已完成歸戶。")
             else:
-                st.write(f"待處理：{len(pending)} 筆")
+                st.warning(f"目前有 {len(pending)} 筆待處理訂單：")
                 df_cost_ref, _ = load_cloud_cost_table()
+                
                 if df_cost_ref is not None:
                     cost_dict = pd.Series(df_cost_ref.成本.values, index=df_cost_ref.Menu_Label).to_dict()
-                    options = ["請選擇..."] + list(cost_dict.keys())
+                    options = ["請選擇對應的真實商品..."] + list(cost_dict.keys())
                     
                     for idx, row in pending.iterrows():
                         with st.container():
-                            c1, c2, c3 = st.columns([2, 2, 1])
-                            c1.text(f"{row['商品名稱']}\n{row['訂單編號']} (${row['售價']})")
+                            st.markdown(f"""
+                            <div style="background:#f8f9fa; padding:15px; border-radius:10px; margin-bottom:10px; border:1px solid #eee;">
+                                <div style="font-weight:bold; color:#d63384;">{row['商品名稱']}</div>
+                                <div style="font-size:0.9em; color:#666;">訂單: {row['訂單編號']} | 金額: ${row['售價']}</div>
+                            </div>
+                            """, unsafe_allow_html=True)
                             
-                            sel = c2.selectbox("真實商品", options, key=f"s_{row['訂單編號']}", label_visibility="collapsed")
-                            remember_me = c2.checkbox("記住對應", key=f"chk_{row['訂單編號']}")
+                            c_sel, c_opt, c_act = st.columns([3, 2, 1])
                             
-                            if c3.button("歸戶", key=f"b_{row['訂單編號']}"):
-                                if sel != "請選擇...":
-                                    real_cost = cost_dict[sel]
-                                    real_name = sel.split(" |")[0]
-                                    with st.spinner("更新中..."):
-                                        update_special_order(row['訂單編號'], real_name, real_cost, df_db, db_sheet)
-                                        if remember_me:
-                                            if "7777" in row['商品名稱']: st.warning("⚠️ 拒絕記住 7777！")
-                                            else:
-                                                save_memory_rule(client, row['商品名稱'], real_name, real_cost)
-                                                st.toast("🧠 已記住規則！")
-                                        st.toast("✅ 成功"); time.sleep(1); st.rerun()
-                                else: st.error("請選擇")
-                            st.divider()
+                            with c_sel:
+                                real_item = st.selectbox("選擇真實商品", options, key=f"s_{row['訂單編號']}", label_visibility="collapsed")
+                            
+                            with c_opt:
+                                remember_me = st.checkbox("以後自動歸戶", key=f"chk_{row['訂單編號']}")
+                                
+                            with c_act:
+                                if st.button("確認歸戶", key=f"b_{row['訂單編號']}", type="primary"):
+                                    if "請選擇" not in real_item:
+                                        real_cost = cost_dict[real_item]
+                                        real_name = real_item.split(" |")[0]
+                                        with st.spinner("寫入中..."):
+                                            update_special_order(row['訂單編號'], real_name, real_cost, df_db, db_sheet)
+                                            if remember_me:
+                                                if "7777" in row['商品名稱']: st.warning("⚠️ 為了安全，無法自動記憶 7777！")
+                                                else:
+                                                    save_memory_rule(client, row['商品名稱'], real_name, real_cost)
+                                            st.toast("✅ 歸戶成功！", icon="🎉")
+                                            time.sleep(1)
+                                            st.rerun()
+                                    else:
+                                        st.error("請選擇商品")
+                        st.markdown("---")
 
         with tab3:
-            st.subheader("Step 3: 商品資料維護")
+            st.markdown("#### 🛠️ 商品資料批量維護")
             
-            st.markdown("##### 1. 新增商品 (從蝦皮匯出檔)")
-            mass_file = st.file_uploader("上傳 mass_update.xlsx", type=['xlsx'])
-            if mass_file and st.button("同步至商品編碼表"):
-                bar = st.progress(0, "...")
-                df_new = process_mass_update_file(mass_file)
-                if df_new is not None:
-                    client = get_gspread_client()
-                    sheet = client.open(COST_SHEET_NAME).sheet1
-                    cnt = sync_new_products(df_new, sheet, bar)
-                    st.success(f"新增 {cnt} 筆")
+            with st.expander("📦 批量新增商品 (從 mass_update.xlsx)", expanded=True):
+                mass_file = st.file_uploader("上傳 mass_update.xlsx", type=['xlsx'])
+                if mass_file:
+                    if st.button("開始同步至編碼表"):
+                        bar = st.progress(0, "分析中...")
+                        df_new = process_mass_update_file(mass_file)
+                        if df_new is not None:
+                            client = get_gspread_client()
+                            sheet = client.open(COST_SHEET_NAME).sheet1
+                            cnt = sync_new_products(df_new, sheet, bar)
+                            st.success(f"✅ 同步完成！共新增 {cnt} 筆新商品。")
+                        else:
+                            st.error("檔案解析失敗")
             
-            st.divider()
-            
-            st.markdown("##### 2. 成本資料救援")
-            st.info("若您的商品編碼表目前成本為 0，可按此鈕去抓取『蝦皮成本比對表2026』的舊資料。")
-            if st.button("🔄 從舊表 (2026) 匯入成本"):
-                bar2 = st.progress(0, "連線中...")
-                res = auto_fill_costs_from_legacy(bar2)
-                if "❌" in res: st.error(res)
-                else: st.success(res)
+            with st.expander("🚑 成本資料救援 (從 2026 舊表)", expanded=False):
+                st.warning("⚠️ 此功能僅在「新增商品」後，發現成本都是 0 時使用。")
+                if st.button("執行救援任務"):
+                    bar2 = st.progress(0, "連線舊資料庫...")
+                    res = auto_fill_costs_from_legacy(bar2)
+                    st.success(res)
+
+    elif pwd:
+        st.error("⛔ 密碼錯誤")
