@@ -1,7 +1,8 @@
 streamlit
 pandas
-openpyxl
 gspread
 oauth2client
-google-auth
 msoffcrypto-tool
+python-calamine
+openpyxl
+plotly>=5.18.0

@@ -5,7 +5,10 @@ from oauth2client.service_account import ServiceAccountCredentials
 import msoffcrypto
 import io
 import datetime
+from datetime import datetime
 import time
+import plotly.express as px
+import plotly.graph_objects as go
 
 # ==========================================
 # 1. 核心參數設定
@@ -602,7 +605,7 @@ def update_special_order(order_sn, real_sku_name, real_cost, df_db, db_sheet):
 st.sidebar.markdown("### 🚀 功能選單")
 mode = st.sidebar.radio("", ["📊 前台戰情室", "⚙️ 後台管理", "🔍 成本神探"], label_visibility="collapsed")
 st.sidebar.markdown("---")
-st.sidebar.caption("Ver 9.7 (Stable) | Update: 2026-01-14 14:05")
+st.sidebar.caption("Ver 10.0 (Dashboard Pro) | Update: 2026-01-15 12:00")
 
 if mode == "🔍 成本神探":
     st.title("🔍 成本神探")
@@ -648,14 +651,61 @@ elif mode == "📊 前台戰情室":
             df_all['日期標籤'] = df_all['訂單成立日期'].dt.strftime('%Y-%m-%d')
         else: st.error("資料庫缺少『訂單成立日期』欄位"); st.stop()
 
-        # 日期篩選器
-        col_date, col_space = st.columns([1, 3])
-        with col_date:
-            dates = sorted(df_all['日期標籤'].dropna().unique(), reverse=True)
-            sel_date = st.selectbox("📅 選擇營業日期", dates) if dates else None
+        # === 全新升級：日期篩選器 ===
+        st.markdown("### 📅 日期篩選器")
+        col_quick, col_date_range = st.columns([1, 2])
+
+        with col_quick:
+            st.markdown("**快速選擇**")
+            quick_col1, quick_col2 = st.columns(2)
+            with quick_col1:
+                if st.button("今日", use_container_width=True):
+                    st.session_state['date_start'] = datetime.now().date()
+                    st.session_state['date_end'] = datetime.now().date()
+                if st.button("本週", use_container_width=True):
+                    today = datetime.now().date()
+                    start = today - datetime.timedelta(days=today.weekday())
+                    st.session_state['date_start'] = start
+                    st.session_state['date_end'] = today
+            with quick_col2:
+                if st.button("本月", use_container_width=True):
+                    today = datetime.now().date()
+                    st.session_state['date_start'] = today.replace(day=1)
+                    st.session_state['date_end'] = today
+                if st.button("上月", use_container_width=True):
+                    today = datetime.now().date()
+                    # Calculate first day of this month, then substract 1 day to get last month end
+                    last_month_end = today.replace(day=1) - datetime.timedelta(days=1)
+                    last_month_start = last_month_end.replace(day=1)
+                    st.session_state['date_start'] = last_month_start
+                    st.session_state['date_end'] = last_month_end
+
+        with col_date_range:
+            st.markdown("**自訂範圍**")
+            col_start, col_end = st.columns(2)
+            # Default to today if not set, or min/max from data
+            min_date = df_all['訂單成立日期'].min().date() if not df_all['訂單成立日期'].isnull().all() else datetime.now().date()
+            max_date = df_all['訂單成立日期'].max().date() if not df_all['訂單成立日期'].isnull().all() else datetime.now().date()
+            
+            # Initialize session state if not present
+            if 'date_start' not in st.session_state: st.session_state['date_start'] = min_date
+            if 'date_end' not in st.session_state: st.session_state['date_end'] = max_date
+
+            with col_start:
+                start_date = st.date_input("起始日期", value=st.session_state['date_start'])
+            with col_end:
+                end_date = st.date_input("結束日期", value=st.session_state['date_end'])
+
+        # 資料篩選
+        df_filtered = df_all[
+            (df_all['訂單成立日期'].dt.date >= start_date) & 
+            (df_all['訂單成立日期'].dt.date <= end_date)
+        ]
         
-        if sel_date:
-            df_day = df_all[df_all['日期標籤'] == sel_date]
+        if df_filtered.empty:
+            st.warning(f"⚠️ 該日期區間 ({start_date} ~ {end_date}) 無資料")
+        else:
+            df_day = df_filtered # Use filtered data as the main dataset
             
             # 分離特殊與正常訂單
             mask_special = (
@@ -689,6 +739,75 @@ elif mode == "📊 前台戰情室":
                         <div class="metric-sub">{sub}</div>
                     </div>
                     """, unsafe_allow_html=True)
+            
+            st.markdown("---")
+            
+            # === 視覺化圖表區塊 ===
+            st.markdown("### 📊 營運數據透視")
+            v_tab1, v_tab2, v_tab3 = st.tabs(["📈 營業額趨勢", "🍰 商品結構分析", "🏆 熱賣排行榜"])
+            
+            with v_tab1:
+                # 折線圖：每日營業額 & 利潤
+                daily_stats = df_day.groupby('日期標籤').agg({
+                    '售價': 'sum',
+                    '總利潤': 'sum'
+                }).reset_index()
+                daily_stats.columns = ['日期', '營業額', '利潤']
+                
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=daily_stats['日期'], y=daily_stats['營業額'], mode='lines+markers', name='營業額', line=dict(color='#FF6B6B', width=3)))
+                fig.add_trace(go.Scatter(x=daily_stats['日期'], y=daily_stats['利潤'], mode='lines+markers', name='利潤', line=dict(color='#4ECDC4', width=3)))
+                fig.update_layout(title="每日營收與獲利趨勢", height=400, hovermode="x unified")
+                st.plotly_chart(fig, use_container_width=True)
+                
+            with v_tab2:
+                # 圓餅圖：商品銷售佔比
+                prod_stats = df_day.groupby('商品名稱')['售價'].sum().reset_index().sort_values('售價', ascending=False)
+                # 取前5名，其他合併
+                if len(prod_stats) > 5:
+                    top5 = prod_stats.head(5)
+                    others_val = prod_stats.iloc[5:]['售價'].sum()
+                    others_df = pd.DataFrame([{'商品名稱': '其他商品', '售價': others_val}])
+                    pie_df = pd.concat([top5, others_df])
+                else:
+                    pie_df = prod_stats
+                
+                fig_pie = px.pie(pie_df, values='售價', names='商品名稱', title='各商品銷售額佔比', color_discrete_sequence=px.colors.qualitative.Pastel)
+                fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+                st.plotly_chart(fig_pie, use_container_width=True)
+                
+            with v_tab3:
+                # 長條圖：Top 10 熱賣
+                top10_stats = df_day.groupby('商品名稱').agg({'售價': 'sum', '總利潤': 'sum', '數量':'sum'}).reset_index().sort_values('售價', ascending=False).head(10)
+                fig_bar = px.bar(top10_stats, x='售價', y='商品名稱', orientation='h', title='Top 10 熱賣商品 (按營業額)', text='售價', color='總利潤')
+                fig_bar.update_layout(yaxis={'categoryorder':'total ascending'}, height=500)
+                st.plotly_chart(fig_bar, use_container_width=True)
+
+            # === 利潤警示系統 ===
+            st.markdown("---")
+            st.markdown("### ⚠️ 異常訂單警示")
+            
+            # 定義規則
+            low_margin_orders = df_day[(df_day['總利潤'] / df_day['售價'] < 0.1) & (df_day['總利潤'] > 0)]
+            loss_orders = df_day[df_day['總利潤'] < 0]
+            high_value_orders = df_day[df_day['售價'] > 5000]
+            
+            ac1, ac2, ac3 = st.columns(3)
+            ac1.metric("🟡 低利潤率 (<10%)", f"{len(low_margin_orders)} 筆", delta_color="off")
+            ac2.metric("🔴 虧損訂單 (<0)", f"{len(loss_orders)} 筆", delta_color="inverse")
+            ac3.metric("🔵 高單價 (>5000)", f"{len(high_value_orders)} 筆", delta_color="off")
+            
+            if not low_margin_orders.empty:
+                with st.expander(f"🟡 查看 {len(low_margin_orders)} 筆低利潤訂單"):
+                    st.dataframe(low_margin_orders[['訂單成立日期','訂單編號','商品名稱','售價','成本','總利潤']], use_container_width=True)
+            
+            if not loss_orders.empty:
+                with st.expander(f"🔴 查看 {len(loss_orders)} 筆虧損訂單"):
+                    st.dataframe(loss_orders[['訂單成立日期','訂單編號','商品名稱','售價','成本','總利潤']], use_container_width=True)
+
+            if not high_value_orders.empty:
+                with st.expander(f"🔵 查看 {len(high_value_orders)} 筆高額訂單"):
+                    st.dataframe(high_value_orders[['訂單成立日期','訂單編號','商品名稱','售價','總利潤']], use_container_width=True)
             
             st.markdown("---")
             
