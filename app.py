@@ -605,7 +605,7 @@ def update_special_order(order_sn, real_sku_name, real_cost, df_db, db_sheet):
 st.sidebar.markdown("### 🚀 功能選單")
 mode = st.sidebar.radio("", ["📊 前台戰情室", "⚙️ 後台管理", "🔍 成本神探"], label_visibility="collapsed")
 st.sidebar.markdown("---")
-st.sidebar.caption("Ver 10.0 (Dashboard Pro) | Update: 2026-01-15 12:00")
+st.sidebar.caption("Ver 10.1 (Pro) | Update: 2026-01-15 13:30")
 
 if mode == "🔍 成本神探":
     st.title("🔍 成本神探")
@@ -866,7 +866,7 @@ elif mode == "⚙️ 後台管理":
     if pwd == ADMIN_PWD:
         # 使用更美觀的 Tabs
         st.markdown("###")
-        tab1, tab2, tab3 = st.tabs(["📥 訂單上傳", "🔗 歸戶系統", "🛠️ 商品維護"])
+        tab1, tab2, tab3, tab4 = st.tabs(["📥 訂單上傳", "🔗 歸戶系統", "🛠️ 商品維護", "🤝 非蝦皮訂單"])
 
         with tab1:
             st.info("請上傳蝦皮匯出的 `Order.all.xlsx` 報表，系統會自動計算成本與利潤。")
@@ -1020,6 +1020,85 @@ elif mode == "⚙️ 後台管理":
                     bar2 = st.progress(0, "連線舊資料庫...")
                     res = auto_fill_costs_from_legacy(bar2)
                     st.success(res)
+            
+        with tab4:
+            st.markdown("#### 🤝 非蝦皮訂單手動錄入 (私下轉帳)")
+            st.info("此功能用於記錄「非蝦皮平台」的交易（如街口、將來銀行轉帳），手續費將自動設為 $0。")
+            
+            # 取得成本表資料
+            df_cost_ref, _ = load_cloud_cost_table()
+            
+            if df_cost_ref is not None:
+                cost_dict = pd.Series(df_cost_ref.成本.values, index=df_cost_ref.Menu_Label).to_dict()
+                item_options = ["請選擇商品..."] + list(cost_dict.keys())
+                
+                with st.form("manual_order_form", clear_on_submit=True):
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        m_date = st.date_input("🗓️ 訂單日期", value=datetime.now().date())
+                        m_item = st.selectbox("📦 選擇商品", item_options)
+                    with c2:
+                        m_bank = st.radio("🏦 收款銀行", ["街口", "將來銀行"], horizontal=True)
+                        m_qty = st.number_input("🔢 數量", min_value=1, value=1, step=1)
+                    
+                    # 取得預設成本
+                    m_default_cost = 0.0
+                    if m_item != "請選擇商品..." and m_item in cost_dict:
+                        m_default_cost = cost_dict[m_item]
+                    
+                    c3, c4 = st.columns(2)
+                    with c3:
+                        m_price = st.number_input("💰 銷售單價 (整筆金額)", min_value=0.0, value=0.0, step=10.0)
+                    with c4:
+                        m_cost = st.number_input("📉 成本單價 (每件)", min_value=0.0, value=float(m_default_cost), step=1.0, key=f"m_cost_{hash(m_item)}")
+
+                    submit_btn = st.form_submit_button("✅ 確認建立非蝦皮訂單", use_container_width=True, type="primary")
+                    
+                    if submit_btn:
+                        if m_item == "請選擇商品...":
+                            st.error("❌ 請選擇商品")
+                        elif m_price <= 0:
+                            st.error("❌ 請輸入售價")
+                        else:
+                            with st.spinner("正在寫入資料庫..."):
+                                # 生成 ID
+                                off_id = f"OFF_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                                # 解析商品純名稱
+                                pure_name = m_item.split(" |")[0].strip()
+                                # 計算利潤 (手續費全額為0)
+                                total_income = m_price 
+                                total_cost = m_cost * m_qty
+                                total_profit = total_income - total_cost
+                                
+                                # 準備寫入 Row
+                                # headers = ['訂單編號', '訂單成立日期', '商品名稱', '商品選項名稱', '數量', '售價', '成交手續費', '金流與系統處理費', '其他服務費', '蝦皮付費總金額', '進蝦皮錢包', '成本', '總利潤', '蝦皮商品編碼', '資料備份時間', '備註']
+                                new_row = [
+                                    off_id,
+                                    m_date.strftime("%Y-%m-%d"),
+                                    pure_name,
+                                    "轉帳交易", # 規格
+                                    m_qty,
+                                    m_price,
+                                    0, 0, 0, 0, # 各種手續費
+                                    total_income,
+                                    m_cost,
+                                    total_profit,
+                                    "OFF-PLATFORM", # 編碼
+                                    get_taiwan_time().strftime("%Y-%m-%d %H:%M:%S"),
+                                    f"轉帳: {m_bank}"
+                                ]
+                                
+                                try:
+                                    client = get_gspread_client()
+                                    db_sheet = client.open(DB_SHEET_NAME).sheet1
+                                    db_sheet.append_row([str(x) for x in new_row])
+                                    st.success(f"🎉 訂單錄入成功！ ID: {off_id}")
+                                    st.balloons()
+                                    st.cache_data.clear()
+                                except Exception as e:
+                                    st.error(f"❌ 寫入失敗: {e}")
+            else:
+                st.error("❌ 無法載入成本表，無法進行手動錄入。")
 
     elif pwd:
         st.error("⛔ 密碼錯誤")
