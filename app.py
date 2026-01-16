@@ -4,7 +4,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import msoffcrypto
 import io
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import time
 import plotly.express as px
 import plotly.graph_objects as go
@@ -118,7 +118,7 @@ inject_custom_css()
 # 2. 工具函式
 # ==========================================
 def get_taiwan_time():
-    return datetime.utcnow() + timedelta(hours=8)
+    return datetime.now(timezone.utc) + timedelta(hours=8)
 
 def clean_id(val):
     if pd.isna(val) or val == "": return ""
@@ -654,9 +654,9 @@ def update_special_order(order_sn, real_sku_name, real_cost, df_db, db_sheet):
 # ==========================================
 st.sidebar.markdown("### 🚀 功能選單")
 if "sb_mode" not in st.session_state: st.session_state["sb_mode"] = "📊 前台戰情室"
-mode = st.sidebar.radio("", ["📊 前台戰情室", "⚙️ 後台管理", "🔍 成本神探"], key="sb_mode", label_visibility="collapsed")
+mode = st.sidebar.radio("功能選單", ["📊 前台戰情室", "⚙️ 後台管理", "🔍 成本神探"], key="sb_mode", label_visibility="collapsed")
 st.sidebar.markdown("---")
-st.sidebar.caption("Ver 10.7.2 (Pro) | Update: 2026-01-16 14:55")
+st.sidebar.caption("Ver 10.7.3 (Pro) | Update: 2026-01-16 15:05")
 
 if mode == "🔍 成本神探":
     st.title("🔍 成本神探")
@@ -701,6 +701,18 @@ elif mode == "📊 前台戰情室":
             df_all['訂單成立日期'] = pd.to_datetime(df_all['訂單成立日期'], errors='coerce')
             df_all['日期標籤'] = df_all['訂單成立日期'].dt.strftime('%Y-%m-%d')
         else: st.error("資料庫缺少『訂單成立日期』欄位"); st.stop()
+        
+        # Debug Mode
+        with st.expander("🕵️ Debug Mode (請截圖給我)", expanded=True):
+            st.write("Data Shape:", df_all.shape)
+            st.write("Date Column Type:", df_all['訂單成立日期'].dtype)
+            st.write("Min Date in DB:", df_all['訂單成立日期'].min())
+            st.write("Max Date in DB:", df_all['訂單成立日期'].max())
+            st.write("Filter Start:", st.session_state.get('date_start'))
+            st.write("Filter End:", st.session_state.get('date_end'))
+            if not df_all.empty:
+                st.write("First 3 rows:")
+                st.dataframe(df_all.head(3))
 
         # === 全新升級：日期篩選器 ===
         st.markdown("### 📅 日期篩選器")
@@ -726,9 +738,6 @@ elif mode == "📊 前台戰情室":
                     today = get_taiwan_time().date()
                     # Calculate first day of this month, then substract 1 day to get last month end
                     last_month_end = today.replace(day=1) - timedelta(days=1)
-                    last_month_start = last_month_end.replace(day=1)
-                    st.session_state['date_start'] = last_month_start
-                    st.session_state['date_end'] = last_month_end
                     last_month_start = last_month_end.replace(day=1)
                     st.session_state['date_start'] = last_month_start
                     st.session_state['date_end'] = last_month_end
