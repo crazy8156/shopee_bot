@@ -699,20 +699,9 @@ elif mode == "📊 前台戰情室":
         if '備註' not in df_all.columns: df_all['備註'] = ""
         if '訂單成立日期' in df_all.columns:
             df_all['訂單成立日期'] = pd.to_datetime(df_all['訂單成立日期'], errors='coerce')
+            df_all.dropna(subset=['訂單成立日期'], inplace=True) # Clean invalid dates
             df_all['日期標籤'] = df_all['訂單成立日期'].dt.strftime('%Y-%m-%d')
         else: st.error("資料庫缺少『訂單成立日期』欄位"); st.stop()
-        
-        # Debug Mode
-        with st.expander("🕵️ Debug Mode (請截圖給我)", expanded=True):
-            st.write("Data Shape:", df_all.shape)
-            st.write("Date Column Type:", df_all['訂單成立日期'].dtype)
-            st.write("Min Date in DB:", df_all['訂單成立日期'].min())
-            st.write("Max Date in DB:", df_all['訂單成立日期'].max())
-            st.write("Filter Start:", st.session_state.get('date_start'))
-            st.write("Filter End:", st.session_state.get('date_end'))
-            if not df_all.empty:
-                st.write("First 3 rows:")
-                st.dataframe(df_all.head(3))
 
         # === 全新升級：日期篩選器 ===
         st.markdown("### 📅 日期篩選器")
@@ -763,6 +752,21 @@ elif mode == "📊 前台戰情室":
             (df_all['訂單成立日期'].dt.date >= start_date) & 
             (df_all['訂單成立日期'].dt.date <= end_date)
         ]
+        
+        # Debug Mode (Moved Here)
+        with st.expander("🕵️ Debug Mode (資料診斷)", expanded=True):
+            c_dbg1, c_dbg2 = st.columns(2)
+            with c_dbg1:
+                st.write(f"📊 原始資料: {len(df_all)} 筆")
+                st.write(f"📅 資料庫最新日期: {df_all['訂單成立日期'].max()}")
+            with c_dbg2:
+                st.write(f"🔍 篩選後資料: {len(df_filtered)} 筆")
+                st.write(f"📆 目前篩選範圍: {start_date} ~ {end_date}")
+            
+            if df_filtered.empty and not df_all.empty:
+                last_date = df_all['訂單成立日期'].max().date()
+                if last_date < start_date:
+                    st.warning(f"⚠️ 您的資料庫最新訂單只到 `{last_date}`，但您選了 `{start_date}` 之後的日期。請嘗試選擇「昨日」或「本月」。")
         
         if df_filtered.empty:
             st.warning(f"⚠️ 該日期區間 ({start_date} ~ {end_date}) 無資料")
