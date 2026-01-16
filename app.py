@@ -604,7 +604,7 @@ def update_special_order(order_sn, real_sku_name, real_cost, df_db, db_sheet):
 st.sidebar.markdown("### 🚀 功能選單")
 mode = st.sidebar.radio("", ["📊 前台戰情室", "⚙️ 後台管理", "🔍 成本神探"], label_visibility="collapsed")
 st.sidebar.markdown("---")
-st.sidebar.caption("Ver 10.1 (Pro) | Update: 2026-01-15 13:30")
+st.sidebar.caption("Ver 10.2 (Pro) | Update: 2026-01-16 08:30")
 
 if mode == "🔍 成本神探":
     st.title("🔍 成本神探")
@@ -884,7 +884,11 @@ elif mode == "⚙️ 後台管理":
                 sales_file = st.file_uploader("拖曳或點擊上傳 Excel", type=['xlsx'])
                 
             if sales_file:
-                if st.button("🚀 開始分析訂單", type="primary", use_container_width=True):
+                # 檔案名稱防呆機制
+                if not sales_file.name.lower().startswith("order.all"):
+                    st.error("❌ 檔案錯誤：請上傳檔名以 `Order.all` 開頭的蝦皮原始報表！")
+                    st.info("💡 提示：蝦皮匯出的檔名通常為 `Order.all.YYYYMMDD.xlsx`")
+                elif st.button("🚀 開始分析訂單", type="primary", use_container_width=True):
                     bar = st.progress(0, "初始化中...")
                     df_sales = load_sales_report(sales_file)
                     if df_sales is not None:
