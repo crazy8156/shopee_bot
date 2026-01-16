@@ -605,7 +605,7 @@ st.sidebar.markdown("### 🚀 功能選單")
 if "sb_mode" not in st.session_state: st.session_state["sb_mode"] = "📊 前台戰情室"
 mode = st.sidebar.radio("", ["📊 前台戰情室", "⚙️ 後台管理", "🔍 成本神探"], key="sb_mode", label_visibility="collapsed")
 st.sidebar.markdown("---")
-st.sidebar.caption("Ver 10.4 (Pro) | Update: 2026-01-16 08:45")
+st.sidebar.caption("Ver 10.5 (Pro) | Update: 2026-01-16 09:00")
 
 if mode == "🔍 成本神探":
     st.title("🔍 成本神探")
@@ -813,15 +813,91 @@ elif mode == "📊 前台戰情室":
             # --- 特殊訂單警示 ---
             if not df_special.empty:
                 st.error(f"⚠️ 發現 {len(df_special)} 筆訂單尚未歸戶 (不會計入毛利)")
-                st.dataframe(
-                    df_special[['訂單編號', '商品名稱', '售價', '備註']],
-                    hide_index=True,
-                    use_container_width=True
-                )
-                if st.button("🚀 前往歸戶系統處理", type="primary"):
-                    st.session_state["sb_mode"] = "⚙️ 後台管理"
-                    st.session_state["saved_pwd"] = ADMIN_PWD # 自動登入
-                    st.rerun()
+                # 載入成本表供選擇
+                df_cost_ref, _ = load_cloud_cost_table()
+                cost_dict = {}
+                item_options = ["請選擇商品..."]
+                if df_cost_ref is not None:
+                    cost_dict = pd.Series(df_cost_ref.成本.values, index=df_cost_ref.Menu_Label).to_dict()
+                    item_options = ["請選擇商品..."] + list(cost_dict.keys())
+
+                st.markdown("👇 **您可以直接在下方選擇商品進行快速歸戶：**")
+                
+                # 標題列
+                h1, h2, h3, h4 = st.columns([1.5, 2, 1, 1])
+                h1.markdown("**訂單資訊**")
+                h2.markdown("**選擇對應商品**")
+                h3.markdown("**確認成本**")
+                h4.markdown("**執行**")
+                st.markdown("---")
+
+                for i, row in df_special.iterrows():
+                    with st.container():
+                        c1, c2, c3, c4 = st.columns([1.5, 2, 1, 1])
+                        
+                        # 1. 訂單資訊
+                        with c1:
+                            st.caption(f"{row['訂單成立日期']} | ${row['售價']}")
+                            st.markdown(f"**{row['商品名稱']}**")
+                            st.caption(f"ID: {row['訂單編號']}")
+                        
+                        # 2. 選擇商品
+                        with c2:
+                            # 嘗試自動匹配 (從 memory rule 或 fuzzy logic) -> 這裡先簡單 default nothing
+                            # Smart Match Logic for UI defaults could be complex, keeping it simple first
+                            real_item = st.selectbox(
+                                "選擇對應商品", 
+                                item_options, 
+                                key=f"dash_sel_{row['訂單編號']}", 
+                                label_visibility="collapsed"
+                            )
+                        
+                        # 3. 成本輸入
+                        with c3:
+                            # Auto-fill cost logic
+                            default_cost = 0
+                            if real_item != "請選擇商品..." and real_item in cost_dict:
+                                default_cost = int(cost_dict[real_item])
+                            
+                            # Use dynamic key to force update when selectbox changes
+                            final_cost = st.number_input(
+                                "成本", 
+                                value=default_cost, 
+                                step=1, 
+                                format="%d",  
+                                key=f"dash_cost_{row['訂單編號']}_{str(real_item)}",
+                                label_visibility="collapsed"
+                            )
+
+                        # 4. 按鈕
+                        with c4:
+                            if st.button("✅ 歸戶", key=f"dash_btn_{row['訂單編號']}", use_container_width=True):
+                                if real_item == "請選擇商品...":
+                                    st.toast("⚠️ 請先選擇商品")
+                                else:
+                                    # 執行歸戶邏輯
+                                    try:
+                                        # 解析 SKU
+                                        real_sku_name = real_item.split(" |")[0].strip()
+                                        
+                                        # 更新資料庫
+                                        if update_special_order(row['訂單編號'], real_sku_name, final_cost, sheet, sheet): # Note: passing 'sheet' as db_sheet (it is opened above as 'sheet')
+                                            # 自動記憶 (預設開啟)
+                                            if "7777" not in str(row['商品名稱']):
+                                                save_memory_rule(client, row['商品名稱'], row.get('商品選項名稱', ''), real_sku_name, final_cost)
+                                            
+                                            # 同步成本表
+                                            if final_cost != default_cost or default_cost == 0:
+                                                update_master_cost_sheet(client, real_item, final_cost)
+                                            
+                                            st.success("歸戶成功！")
+                                            time.sleep(1)
+                                            st.rerun()
+                                        else:
+                                            st.error("更新失敗")
+                                    except Exception as e:
+                                        st.error(f"錯誤: {e}")
+                        st.markdown("---")
             
             # --- 視覺化圖表區 ---
             c_chart1, c_chart2 = st.columns(2)
