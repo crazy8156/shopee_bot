@@ -656,7 +656,7 @@ st.sidebar.markdown("### 🚀 功能選單")
 if "sb_mode" not in st.session_state: st.session_state["sb_mode"] = "📊 前台戰情室"
 mode = st.sidebar.radio("", ["📊 前台戰情室", "⚙️ 後台管理", "🔍 成本神探"], key="sb_mode", label_visibility="collapsed")
 st.sidebar.markdown("---")
-st.sidebar.caption("Ver 10.7 (Pro) | Update: 2026-01-16 10:25")
+st.sidebar.caption("Ver 10.7.1 (Pro) | Update: 2026-01-16 13:58")
 
 if mode == "🔍 成本神探":
     st.title("🔍 成本神探")
@@ -1235,7 +1235,7 @@ elif mode == "⚙️ 後台管理":
                     with c3:
                         m_price = st.number_input("💰 銷售單價 (整筆金額)", min_value=0.0, value=0.0, step=10.0)
                     with c4:
-                        m_cost = st.number_input("📉 成本單價 (每件)", min_value=0.0, value=float(m_default_cost), step=1.0, key=f"m_cost_{hash(m_item)}")
+                        m_cost = st.number_input("📉 成本單價 (每件)", min_value=0.0, value=float(m_default_cost), step=1.0, key=f"m_cost_{str(m_item)}")
 
                     submit_btn = st.form_submit_button("✅ 確認建立非蝦皮訂單", use_container_width=True, type="primary")
                     
