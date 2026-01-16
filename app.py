@@ -798,11 +798,11 @@ elif mode == "📊 前台戰情室":
             
             if not low_margin_orders.empty:
                 with st.expander(f"🟡 查看 {len(low_margin_orders)} 筆低利潤訂單"):
-                    st.dataframe(low_margin_orders[['訂單成立日期','訂單編號','商品名稱','售價','成本','總利潤']], use_container_width=True)
+                    st.dataframe(low_margin_orders[['訂單成立日期','訂單編號','商品名稱','數量','售價','進蝦皮錢包','成本','總利潤']], use_container_width=True)
             
             if not loss_orders.empty:
                 with st.expander(f"🔴 查看 {len(loss_orders)} 筆虧損訂單"):
-                    st.dataframe(loss_orders[['訂單成立日期','訂單編號','商品名稱','售價','成本','總利潤']], use_container_width=True)
+                    st.dataframe(loss_orders[['訂單成立日期','訂單編號','商品名稱','數量','售價','進蝦皮錢包','成本','總利潤']], use_container_width=True)
 
             if not high_value_orders.empty:
                 with st.expander(f"🔵 查看 {len(high_value_orders)} 筆高額訂單"):
