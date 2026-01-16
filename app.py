@@ -604,7 +604,7 @@ def update_special_order(order_sn, real_sku_name, real_cost, df_db, db_sheet):
 st.sidebar.markdown("### 🚀 功能選單")
 mode = st.sidebar.radio("", ["📊 前台戰情室", "⚙️ 後台管理", "🔍 成本神探"], label_visibility="collapsed")
 st.sidebar.markdown("---")
-st.sidebar.caption("Ver 10.2 (Pro) | Update: 2026-01-16 08:30")
+st.sidebar.caption("Ver 10.3 (Pro) | Update: 2026-01-16 08:35")
 
 if mode == "🔍 成本神探":
     st.title("🔍 成本神探")
@@ -661,11 +661,10 @@ elif mode == "📊 前台戰情室":
                 if st.button("今日", use_container_width=True):
                     st.session_state['date_start'] = datetime.now().date()
                     st.session_state['date_end'] = datetime.now().date()
-                if st.button("本週", use_container_width=True):
-                    today = datetime.now().date()
-                    start = today - timedelta(days=today.weekday())
-                    st.session_state['date_start'] = start
-                    st.session_state['date_end'] = today
+                if st.button("昨日", use_container_width=True):
+                    yesterday = datetime.now().date() - timedelta(days=1)
+                    st.session_state['date_start'] = yesterday
+                    st.session_state['date_end'] = yesterday
             with quick_col2:
                 if st.button("本月", use_container_width=True):
                     today = datetime.now().date()
