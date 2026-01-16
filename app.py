@@ -603,7 +603,10 @@ def process_orders(df_sales, df_cost, progress_bar):
                         sync_fields = ['訂單成立日期', '訂單狀態', '商品名稱']
                         for field in sync_fields:
                             if field in df_existing.columns and field in row:
-                                df_existing.at[target_idx[0], field] = row[field]
+                                val_str = str(row[field])
+                                df_existing.at[target_idx[0], field] = val_str
+                                if field == '訂單成立日期':
+                                    st.write(f"🔄 [Sync] {order_id} 日期更新: {val_str}")
                 else:
                     # Case 2: Not consolidated -> UPDATE
                     target_idx = df_existing.index[df_existing['訂單編號'] == order_id]
@@ -659,6 +662,7 @@ def process_orders(df_sales, df_cost, progress_bar):
         db_sheet.update(final_data)
         
         progress_bar.progress(100, text="完成")
+        st.cache_data.clear() # Force clear cache to ensure frontend sees new data immediately
         return f"✅ 同步完成！新增 {len(new_records)} 筆，更新 {updated_count} 筆，保留 {skipped_count} 筆已歸戶資料。"
 
 def update_special_order(order_sn, real_sku_name, real_cost, df_db, db_sheet):
@@ -728,6 +732,12 @@ elif mode == "📊 前台戰情室":
         if '備註' not in df_all.columns: df_all['備註'] = ""
         if '訂單成立日期' in df_all.columns:
             df_all['訂單成立日期'] = pd.to_datetime(df_all['訂單成立日期'], errors='coerce')
+            
+            # Check for parsing failures
+            invalid_count = df_all['訂單成立日期'].isna().sum()
+            if invalid_count > 0:
+                st.warning(f"⚠️ 偵測到 {invalid_count} 筆資料日期格式錯誤 (無法解析)，已自動濾除。此問題可能導致最新訂單無法顯示。")
+                
             df_all.dropna(subset=['訂單成立日期'], inplace=True) # Clean invalid dates
             df_all['日期標籤'] = df_all['訂單成立日期'].dt.strftime('%Y-%m-%d')
         else: st.error("資料庫缺少『訂單成立日期』欄位"); st.stop()
