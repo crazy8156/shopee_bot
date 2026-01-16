@@ -605,7 +605,7 @@ st.sidebar.markdown("### 🚀 功能選單")
 if "sb_mode" not in st.session_state: st.session_state["sb_mode"] = "📊 前台戰情室"
 mode = st.sidebar.radio("", ["📊 前台戰情室", "⚙️ 後台管理", "🔍 成本神探"], key="sb_mode", label_visibility="collapsed")
 st.sidebar.markdown("---")
-st.sidebar.caption("Ver 10.6 (Pro) | Update: 2026-01-16 09:30")
+st.sidebar.caption("Ver 10.6.1 (Pro) | Update: 2026-01-16 09:35")
 
 if mode == "🔍 成本神探":
     st.title("🔍 成本神探")
@@ -829,7 +829,7 @@ elif mode == "📊 前台戰情室":
                     
                     progress_bar = st.progress(0, text="正在批次處理中...")
                     
-                    for idx, row in df_special.iterrows():
+                    for i, (idx, row) in enumerate(df_special.iterrows()):
                         order_sn = row['訂單編號']
                         # 從 session_state 獲取當前選擇的值
                         sel_key = f"dash_sel_{order_sn}"
@@ -860,7 +860,7 @@ elif mode == "📊 前台戰情室":
                                     fail_count += 1
                         
                         # Update progress
-                        progress_bar.progress((idx + 1) / len(df_special), text=f"處理中... ({idx + 1}/{len(df_special)})")
+                        progress_bar.progress((i + 1) / len(df_special), text=f"處理中... ({i + 1}/{len(df_special)})")
                     
                     progress_bar.empty()
                     if success_count > 0:
