@@ -4,8 +4,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import msoffcrypto
 import io
-import datetime
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 import plotly.express as px
 import plotly.graph_objects as go
@@ -119,7 +118,7 @@ inject_custom_css()
 # 2. 工具函式
 # ==========================================
 def get_taiwan_time():
-    return datetime.datetime.utcnow() + datetime.timedelta(hours=8)
+    return datetime.utcnow() + timedelta(hours=8)
 
 def clean_id(val):
     if pd.isna(val) or val == "": return ""
@@ -664,7 +663,7 @@ elif mode == "📊 前台戰情室":
                     st.session_state['date_end'] = datetime.now().date()
                 if st.button("本週", use_container_width=True):
                     today = datetime.now().date()
-                    start = today - datetime.timedelta(days=today.weekday())
+                    start = today - timedelta(days=today.weekday())
                     st.session_state['date_start'] = start
                     st.session_state['date_end'] = today
             with quick_col2:
@@ -675,7 +674,7 @@ elif mode == "📊 前台戰情室":
                 if st.button("上月", use_container_width=True):
                     today = datetime.now().date()
                     # Calculate first day of this month, then substract 1 day to get last month end
-                    last_month_end = today.replace(day=1) - datetime.timedelta(days=1)
+                    last_month_end = today.replace(day=1) - timedelta(days=1)
                     last_month_start = last_month_end.replace(day=1)
                     st.session_state['date_start'] = last_month_start
                     st.session_state['date_end'] = last_month_end
