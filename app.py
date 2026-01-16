@@ -672,7 +672,29 @@ def process_orders(df_sales, df_cost, progress_bar):
         # Convert to list of lists
         final_data = [df_final.columns.tolist()] + df_final.astype(str).values.tolist()
         db_sheet.clear()
-        db_sheet.update(final_data)
+        try:
+            # Try new argument name first (gspread v6)
+            db_sheet.update(range_name='A1', values=final_data)
+        except:
+            # Fallback for older gspread
+            db_sheet.update('A1', final_data)
+        
+        # === Read-Back Verification ===
+        st.write("🔎 正在驗證寫入結果...")
+        # Check specific order if synced
+        if len(sync_logs) > 0:
+            # Extract first synced ID from logs
+            first_synced_id = sync_logs[0].split('] ')[1].split(' ')[0]
+            # Re-read sheet
+            check_data = db_sheet.get_all_records()
+            check_df = pd.DataFrame(check_data)
+            # Find the row
+            check_row = check_df[check_df['訂單編號'].astype(str) == first_synced_id]
+            if not check_row.empty:
+                saved_date = check_row.iloc[0]['訂單成立日期']
+                st.success(f"✅ 寫入驗證成功！資料庫內 ID: {first_synced_id} 的日期已變更為: {saved_date}")
+            else:
+                st.error(f"❌ 寫入驗證失敗：無法在資料庫中找到剛剛同步的 ID {first_synced_id}")
         
         progress_bar.progress(100, text="完成")
         st.cache_data.clear() # Force clear cache to ensure frontend sees new data immediately
