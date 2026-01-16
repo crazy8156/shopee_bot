@@ -656,7 +656,7 @@ st.sidebar.markdown("### 🚀 功能選單")
 if "sb_mode" not in st.session_state: st.session_state["sb_mode"] = "📊 前台戰情室"
 mode = st.sidebar.radio("", ["📊 前台戰情室", "⚙️ 後台管理", "🔍 成本神探"], key="sb_mode", label_visibility="collapsed")
 st.sidebar.markdown("---")
-st.sidebar.caption("Ver 10.7.1 (Pro) | Update: 2026-01-16 13:58")
+st.sidebar.caption("Ver 10.7.2 (Pro) | Update: 2026-01-16 14:55")
 
 if mode == "🔍 成本神探":
     st.title("🔍 成本神探")
@@ -711,21 +711,24 @@ elif mode == "📊 前台戰情室":
             quick_col1, quick_col2 = st.columns(2)
             with quick_col1:
                 if st.button("今日", use_container_width=True):
-                    st.session_state['date_start'] = datetime.now().date()
-                    st.session_state['date_end'] = datetime.now().date()
+                    st.session_state['date_start'] = get_taiwan_time().date()
+                    st.session_state['date_end'] = get_taiwan_time().date()
                 if st.button("昨日", use_container_width=True):
-                    yesterday = datetime.now().date() - timedelta(days=1)
+                    yesterday = get_taiwan_time().date() - timedelta(days=1)
                     st.session_state['date_start'] = yesterday
                     st.session_state['date_end'] = yesterday
             with quick_col2:
                 if st.button("本月", use_container_width=True):
-                    today = datetime.now().date()
+                    today = get_taiwan_time().date()
                     st.session_state['date_start'] = today.replace(day=1)
                     st.session_state['date_end'] = today
                 if st.button("上月", use_container_width=True):
-                    today = datetime.now().date()
+                    today = get_taiwan_time().date()
                     # Calculate first day of this month, then substract 1 day to get last month end
                     last_month_end = today.replace(day=1) - timedelta(days=1)
+                    last_month_start = last_month_end.replace(day=1)
+                    st.session_state['date_start'] = last_month_start
+                    st.session_state['date_end'] = last_month_end
                     last_month_start = last_month_end.replace(day=1)
                     st.session_state['date_start'] = last_month_start
                     st.session_state['date_end'] = last_month_end
@@ -734,8 +737,8 @@ elif mode == "📊 前台戰情室":
             st.markdown("**自訂範圍**")
             col_start, col_end = st.columns(2)
             # Default to today if not set, or min/max from data
-            min_date = df_all['訂單成立日期'].min().date() if not df_all['訂單成立日期'].isnull().all() else datetime.now().date()
-            max_date = df_all['訂單成立日期'].max().date() if not df_all['訂單成立日期'].isnull().all() else datetime.now().date()
+            min_date = df_all['訂單成立日期'].min().date() if not df_all['訂單成立日期'].isnull().all() else get_taiwan_time().date()
+            max_date = df_all['訂單成立日期'].max().date() if not df_all['訂單成立日期'].isnull().all() else get_taiwan_time().date()
             
             # Initialize session state if not present
             if 'date_start' not in st.session_state: st.session_state['date_start'] = min_date
