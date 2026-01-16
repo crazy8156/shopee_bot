@@ -881,7 +881,7 @@ elif mode == "📊 前台戰情室":
                                         real_sku_name = real_item.split(" |")[0].strip()
                                         
                                         # 更新資料庫
-                                        if update_special_order(row['訂單編號'], real_sku_name, final_cost, sheet, sheet): # Note: passing 'sheet' as db_sheet (it is opened above as 'sheet')
+                                        if update_special_order(row['訂單編號'], real_sku_name, final_cost, df_all, sheet): # Fix: pass df_all (dataframe) and sheet (worksheet)
                                             # 自動記憶 (預設開啟)
                                             if "7777" not in str(row['商品名稱']):
                                                 save_memory_rule(client, row['商品名稱'], row.get('商品選項名稱', ''), real_sku_name, final_cost)
