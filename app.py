@@ -602,9 +602,10 @@ def update_special_order(order_sn, real_sku_name, real_cost, df_db, db_sheet):
 # 5. 主程式
 # ==========================================
 st.sidebar.markdown("### 🚀 功能選單")
-mode = st.sidebar.radio("", ["📊 前台戰情室", "⚙️ 後台管理", "🔍 成本神探"], label_visibility="collapsed")
+if "sb_mode" not in st.session_state: st.session_state["sb_mode"] = "📊 前台戰情室"
+mode = st.sidebar.radio("", ["📊 前台戰情室", "⚙️ 後台管理", "🔍 成本神探"], key="sb_mode", label_visibility="collapsed")
 st.sidebar.markdown("---")
-st.sidebar.caption("Ver 10.3 (Pro) | Update: 2026-01-16 08:35")
+st.sidebar.caption("Ver 10.4 (Pro) | Update: 2026-01-16 08:45")
 
 if mode == "🔍 成本神探":
     st.title("🔍 成本神探")
@@ -817,6 +818,10 @@ elif mode == "📊 前台戰情室":
                     hide_index=True,
                     use_container_width=True
                 )
+                if st.button("🚀 前往歸戶系統處理", type="primary"):
+                    st.session_state["sb_mode"] = "⚙️ 後台管理"
+                    st.session_state["saved_pwd"] = ADMIN_PWD # 自動登入
+                    st.rerun()
             
             # --- 視覺化圖表區 ---
             c_chart1, c_chart2 = st.columns(2)
@@ -859,7 +864,9 @@ elif mode == "📊 前台戰情室":
 elif mode == "⚙️ 後台管理":
     st.title("⚙️ 後台管理中心")
     
-    pwd = st.text_input("🔑 請輸入管理員密碼", type="password")
+    # 自動帶入已記憶的密碼
+    def_pwd = st.session_state.get("saved_pwd", "")
+    pwd = st.text_input("🔑 請輸入管理員密碼", type="password", value=def_pwd)
     
     if pwd == ADMIN_PWD:
         # 使用更美觀的 Tabs
