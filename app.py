@@ -605,7 +605,7 @@ st.sidebar.markdown("### 🚀 功能選單")
 if "sb_mode" not in st.session_state: st.session_state["sb_mode"] = "📊 前台戰情室"
 mode = st.sidebar.radio("", ["📊 前台戰情室", "⚙️ 後台管理", "🔍 成本神探"], key="sb_mode", label_visibility="collapsed")
 st.sidebar.markdown("---")
-st.sidebar.caption("Ver 10.5.2 (Stable) | Update: 2026-01-16 09:15")
+st.sidebar.caption("Ver 10.6 (Pro) | Update: 2026-01-16 09:30")
 
 if mode == "🔍 成本神探":
     st.title("🔍 成本神探")
@@ -823,6 +823,55 @@ elif mode == "📊 前台戰情室":
 
                 st.markdown("👇 **您可以直接在下方選擇商品進行快速歸戶：**")
                 
+                if st.button("🚀 全部一鍵歸戶 (Batch Confirm)", type="primary", use_container_width=True):
+                    success_count = 0
+                    fail_count = 0
+                    
+                    progress_bar = st.progress(0, text="正在批次處理中...")
+                    
+                    for idx, row in df_special.iterrows():
+                        order_sn = row['訂單編號']
+                        # 從 session_state 獲取當前選擇的值
+                        sel_key = f"dash_sel_{order_sn}"
+                        
+                        # 檢查是否有選擇商品
+                        if sel_key in st.session_state:
+                            real_item = st.session_state[sel_key]
+                            
+                            if real_item != "請選擇商品...":
+                                # 嘗試獲取成本 (需組裝 key)
+                                cost_key = f"dash_cost_{order_sn}_{str(real_item)}"
+                                final_cost = 0
+                                if cost_key in st.session_state:
+                                    final_cost = st.session_state[cost_key]
+                                
+                                # 執行歸戶
+                                try:
+                                    real_sku_name = real_item.split(" |")[0].strip()
+                                    if update_special_order(order_sn, real_sku_name, final_cost, df_all, sheet):
+                                        # 自動記憶
+                                        if "7777" not in str(row['商品名稱']):
+                                            save_memory_rule(client, row['商品名稱'], row.get('商品選項名稱', ''), real_sku_name, final_cost)
+                                        success_count += 1
+                                    else:
+                                        fail_count += 1
+                                except Exception as e:
+                                    print(f"Batch Error: {e}")
+                                    fail_count += 1
+                        
+                        # Update progress
+                        progress_bar.progress((idx + 1) / len(df_special), text=f"處理中... ({idx + 1}/{len(df_special)})")
+                    
+                    progress_bar.empty()
+                    if success_count > 0:
+                        st.success(f"✅ 成功歸戶 {success_count} 筆訂單！")
+                        if fail_count > 0:
+                            st.warning(f"⚠️ {fail_count} 筆處理失敗")
+                        time.sleep(1.5)
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ 沒有檢測到可歸戶的訂單，請先選擇商品！")
+
                 # 標題列
                 h1, h2, h3, h4 = st.columns([1.5, 2, 1, 1])
                 h1.markdown("**訂單資訊**")
