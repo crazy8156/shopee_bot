@@ -575,6 +575,9 @@ def process_orders(df_sales, df_cost, progress_bar):
         # Load existing data
         df_existing = pd.DataFrame(existing_data[1:], columns=existing_data[0])
         
+        # Clean existing columns headers to avoid mismatch
+        df_existing.columns = df_existing.columns.astype(str).str.strip().str.replace('\n', '')
+        
         # Ensure Order IDs are strings for comparison
         df_existing['訂單編號'] = df_existing['訂單編號'].astype(str).str.strip()
         df_upload_ready['訂單編號'] = df_upload_ready['訂單編號'].astype(str).str.strip()
@@ -583,6 +586,7 @@ def process_orders(df_sales, df_cost, progress_bar):
         existing_dict = df_existing.set_index('訂單編號').to_dict('index')
         
         new_records = []
+        sync_logs = []  # To capture what is being synced
         updated_count = 0
         skipped_count = 0
         
@@ -606,7 +610,7 @@ def process_orders(df_sales, df_cost, progress_bar):
                                 val_str = str(row[field])
                                 df_existing.at[target_idx[0], field] = val_str
                                 if field == '訂單成立日期':
-                                    st.write(f"🔄 [Sync] {order_id} 日期更新: {val_str}")
+                                    sync_logs.append(f"🔄 [Sync] {order_id} 日期更新: {val_str}")
                 else:
                     # Case 2: Not consolidated -> UPDATE
                     target_idx = df_existing.index[df_existing['訂單編號'] == order_id]
@@ -636,6 +640,15 @@ def process_orders(df_sales, df_cost, progress_bar):
                         if "已歸戶" in old_note:
                             st.write(f"範例略過 ID: {oid} (備註: {old_note})")
                             break
+            
+            if len(sync_logs) > 0:
+                st.write("🔄 同步日誌 (Sync Logs):")
+                for log in sync_logs[:5]: # Show first 5 logs
+                    st.text(log)
+                if len(sync_logs) > 5: st.text(f"... 以及其他 {len(sync_logs)-5} 筆")
+            else:
+                st.write("⚠️ 無日期同步記錄 (可能是欄位名稱不符或資料已一致)")
+                st.write(f"系統檢查到的欄位: {df_existing.columns.tolist()[:10]}...") # Debug columns
             
             if updated_count > 0:
                 st.info(f"ℹ️ 更新了 {updated_count} 筆既有資料")
