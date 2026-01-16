@@ -599,12 +599,11 @@ def process_orders(df_sales, df_cost, progress_bar):
                     skipped_count += 1
                     target_idx = df_existing.index[df_existing['訂單編號'] == order_id]
                     if not target_idx.empty:
-                        # Sync crucial fields that might change on platform but shouldn't break consolidation
-                        # 訂單成立日期 might be wrong if previous upload had timezone issues
-                        # 訂單狀態 changes over time (e.g. 待出貨 -> 運送中)
-                        df_existing.at[target_idx[0], '訂單成立日期'] = row['訂單成立日期']
-                        df_existing.at[target_idx[0], '訂單狀態'] = row['訂單狀態']
-                        df_existing.at[target_idx[0], '商品名稱'] = row['商品名稱'] # Sync name too just in case
+                        # Sync crucial fields if they exist in schema
+                        sync_fields = ['訂單成立日期', '訂單狀態', '商品名稱']
+                        for field in sync_fields:
+                            if field in df_existing.columns and field in row:
+                                df_existing.at[target_idx[0], field] = row[field]
                 else:
                     # Case 2: Not consolidated -> UPDATE
                     target_idx = df_existing.index[df_existing['訂單編號'] == order_id]
