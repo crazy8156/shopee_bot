@@ -470,7 +470,9 @@ def process_orders(df_sales, df_cost, progress_bar):
     if '進蝦皮錢包' not in df_merged.columns or df_merged['進蝦皮錢包'].sum() == 0:
         df_merged['進蝦皮錢包'] = df_merged['售價'] - df_merged['蝦皮付費總金額']
 
-    df_merged['總利潤'] = df_merged['進蝦皮錢包'] - (df_merged['成本'] * df_merged['數量'])
+    # Fix: User requested to modify profit calculation formula to subtract TOTAL cost directly, without multiplying by quantity.
+    # This implies the imported cost is treated as total cost per line item or user preference.
+    df_merged['總利潤'] = df_merged['進蝦皮錢包'] - df_merged['成本']
     
     progress_bar.progress(50, text=f"比對 {DB_SHEET_NAME}...")
     client = get_gspread_client()
@@ -489,7 +491,6 @@ def process_orders(df_sales, df_cost, progress_bar):
         df_upload_ready.loc[mask_special, '備註'] = "待人工確認"
         df_upload_ready.loc[mask_special, '總利潤'] = 0
         
-        # 建立成本查詢表 (for Smart Match)
         # 建立成本查詢表 (for Smart Match)
         name_cost_map = {}
         normalized_cost_map = {} # 新增：標準化查詢表
@@ -552,7 +553,9 @@ def process_orders(df_sales, df_cost, progress_bar):
             if found_cost is not None:
                 real_cost = found_cost
                 income = float(row['進蝦皮錢包'])
-                real_profit = income - real_cost 
+                # real_profit = income - real_cost # Original line
+                real_profit = income - real_cost # Modified formula applied above to all, but here we overwrite special orders
+                
                 df_upload_ready.at[idx, '成本'] = real_cost
                 df_upload_ready.at[idx, '總利潤'] = real_profit
                 df_upload_ready.at[idx, '備註'] = f"已歸戶({source_type}): {found_sku}"
@@ -561,25 +564,73 @@ def process_orders(df_sales, df_cost, progress_bar):
         if h not in df_upload_ready.columns: df_upload_ready[h] = ""
     df_upload_ready = df_upload_ready[headers].fillna('').astype(str)
     
+    # === Smart Merge Logic ===
     existing_data = db_sheet.get_all_values()
     
     if len(existing_data) <= 1:
+        # Initial Write
         db_sheet.clear(); db_sheet.append_row(headers); db_sheet.append_rows(df_upload_ready.values.tolist())
         return f"✅ 初始化完成！新增 {len(df_upload_ready)} 筆。"
     else:
+        # Load existing data
         df_existing = pd.DataFrame(existing_data[1:], columns=existing_data[0])
-        existing_ids = set(df_existing['訂單編號'].astype(str).str.strip())
-        df_new_orders = df_upload_ready[~df_upload_ready['訂單編號'].astype(str).str.strip().isin(existing_ids)]
-        skipped_count = len(df_upload_ready) - len(df_new_orders)
         
-        if not df_new_orders.empty:
-            progress_bar.progress(80, text=f"新增 {len(df_new_orders)} 筆新資料...")
-            db_sheet.append_rows(df_new_orders.values.tolist())
-            progress_bar.progress(100, text="完成")
-            return f"✅ 成功！新增 {len(df_new_orders)} 筆新訂單 (跳過 {skipped_count} 筆舊資料)。"
+        # Ensure Order IDs are strings for comparison
+        df_existing['訂單編號'] = df_existing['訂單編號'].astype(str).str.strip()
+        df_upload_ready['訂單編號'] = df_upload_ready['訂單編號'].astype(str).str.strip()
+        
+        # Create a dictionary of existing orders for fast lookup: {ID: Row}
+        existing_dict = df_existing.set_index('訂單編號').to_dict('index')
+        
+        new_records = []
+        updated_count = 0
+        skipped_count = 0
+        
+        for idx, row in df_upload_ready.iterrows():
+            order_id = row['訂單編號']
+            
+            if order_id in existing_dict:
+                # Order exists, check if it is already consolidated
+                old_row = existing_dict[order_id]
+                old_note = str(old_row.get('備註', ''))
+                
+                if "已歸戶" in old_note:
+                    # Case 1: Already consolidated -> PROTECT (Skip update)
+                    # We use the OLD row data for the final list
+                    # Convert dict back to series/row-like to append to final list if we were rebuilding
+                    # But here we are deciding what to WRITE.
+                    # Actually, better strategy: Merge df_existing and df_upload_ready
+                    skipped_count += 1
+                else:
+                    # Case 2: Not consolidated -> UPDATE (Overwrite with new data to get latest status/price)
+                    # We update the entry in df_existing
+                    # Find index in df_existing
+                    target_idx = df_existing.index[df_existing['訂單編號'] == order_id]
+                    if not target_idx.empty:
+                        df_existing.loc[target_idx[0]] = row
+                        updated_count += 1
+            else:
+                # Case 3: New Order -> ADD
+                new_records.append(row)
+        
+        # Combine Existing (Updated) + New Records
+        if new_records:
+            df_new = pd.DataFrame(new_records)
+            df_final = pd.concat([df_existing, df_new], ignore_index=True)
         else:
-            progress_bar.progress(100, text="無新資料")
-            return f"✅ 沒事做！全部資料已存在 (跳過 {skipped_count} 筆)。"
+            df_final = df_existing
+
+        # Write back to sheet (Overwrite everything to ensure updates are reflected)
+        # Using clear and update is safer for consistency than appending mixed
+        progress_bar.progress(90, text="正在同步資料庫...")
+        
+        # Convert to list of lists
+        final_data = [df_final.columns.tolist()] + df_final.astype(str).values.tolist()
+        db_sheet.clear()
+        db_sheet.update(final_data)
+        
+        progress_bar.progress(100, text="完成")
+        return f"✅ 同步完成！新增 {len(new_records)} 筆，更新 {updated_count} 筆，保留 {skipped_count} 筆已歸戶資料。"
 
 def update_special_order(order_sn, real_sku_name, real_cost, df_db, db_sheet):
     idx = df_db.index[df_db['訂單編號'] == order_sn].tolist()
@@ -605,7 +656,7 @@ st.sidebar.markdown("### 🚀 功能選單")
 if "sb_mode" not in st.session_state: st.session_state["sb_mode"] = "📊 前台戰情室"
 mode = st.sidebar.radio("", ["📊 前台戰情室", "⚙️ 後台管理", "🔍 成本神探"], key="sb_mode", label_visibility="collapsed")
 st.sidebar.markdown("---")
-st.sidebar.caption("Ver 10.6.1 (Pro) | Update: 2026-01-16 09:35")
+st.sidebar.caption("Ver 10.7 (Pro) | Update: 2026-01-16 10:25")
 
 if mode == "🔍 成本神探":
     st.title("🔍 成本神探")
