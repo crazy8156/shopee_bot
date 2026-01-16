@@ -590,21 +590,23 @@ def process_orders(df_sales, df_cost, progress_bar):
             order_id = row['訂單編號']
             
             if order_id in existing_dict:
-                # Order exists, check if it is already consolidated
+                # Order exists
                 old_row = existing_dict[order_id]
                 old_note = str(old_row.get('備註', ''))
                 
                 if "已歸戶" in old_note:
-                    # Case 1: Already consolidated -> PROTECT (Skip update)
-                    # We use the OLD row data for the final list
-                    # Convert dict back to series/row-like to append to final list if we were rebuilding
-                    # But here we are deciding what to WRITE.
-                    # Actually, better strategy: Merge df_existing and df_upload_ready
+                    # Case 1: Already consolidated -> PROTECT, but SYNC Date/Status
                     skipped_count += 1
+                    target_idx = df_existing.index[df_existing['訂單編號'] == order_id]
+                    if not target_idx.empty:
+                        # Sync crucial fields that might change on platform but shouldn't break consolidation
+                        # 訂單成立日期 might be wrong if previous upload had timezone issues
+                        # 訂單狀態 changes over time (e.g. 待出貨 -> 運送中)
+                        df_existing.at[target_idx[0], '訂單成立日期'] = row['訂單成立日期']
+                        df_existing.at[target_idx[0], '訂單狀態'] = row['訂單狀態']
+                        df_existing.at[target_idx[0], '商品名稱'] = row['商品名稱'] # Sync name too just in case
                 else:
-                    # Case 2: Not consolidated -> UPDATE (Overwrite with new data to get latest status/price)
-                    # We update the entry in df_existing
-                    # Find index in df_existing
+                    # Case 2: Not consolidated -> UPDATE
                     target_idx = df_existing.index[df_existing['訂單編號'] == order_id]
                     if not target_idx.empty:
                         df_existing.loc[target_idx[0]] = row
@@ -612,6 +614,34 @@ def process_orders(df_sales, df_cost, progress_bar):
             else:
                 # Case 3: New Order -> ADD
                 new_records.append(row)
+        
+        # DEBUG: Show counts and details
+        with st.expander("🕵️ Upload Debug Info (上傳診斷)", expanded=True):
+            st.write(f"📂 讀取到的 Excel 列數: {len(df_sales)}")
+            st.write(f"🧹 清理後準備寫入的列數: {len(df_upload_ready)}")
+            st.write("📋 準備寫入的前 3 筆 ID:", df_upload_ready['訂單編號'].head(3).tolist())
+            
+            st.write(f"🗄️ 資料庫現有筆數: {len(df_existing)}")
+            st.write(f"📊 判定結果 - 新增: {len(new_records)}, 更新: {updated_count}, 略過: {skipped_count}")
+            
+            if skipped_count > 0:
+                st.warning(f"⚠️ 發現 {skipped_count} 筆重複資料被略過 (因為已歸戶)")
+                # Find first skipped example
+                for idx, row in df_upload_ready.iterrows():
+                    oid = row['訂單編號']
+                    if oid in existing_dict:
+                        old_note = str(existing_dict[oid].get('備註', ''))
+                        if "已歸戶" in old_note:
+                            st.write(f"範例略過 ID: {oid} (備註: {old_note})")
+                            break
+            
+            if updated_count > 0:
+                st.info(f"ℹ️ 更新了 {updated_count} 筆既有資料")
+                
+            if len(new_records) == 0:
+                st.error("❌ 警告：判定為 0 筆新資料！請檢查上方 '準備寫入的前 3 筆 ID' 是否真的已存在於資料庫。")
+
+        # Combine Existing (Updated) + New Records
         
         # Combine Existing (Updated) + New Records
         if new_records:
