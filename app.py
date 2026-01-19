@@ -724,7 +724,7 @@ st.sidebar.markdown("### 🚀 功能選單")
 if "sb_mode" not in st.session_state: st.session_state["sb_mode"] = "📊 前台戰情室"
 mode = st.sidebar.radio("功能選單", ["📊 前台戰情室", "⚙️ 後台管理", "🔍 成本神探"], key="sb_mode", label_visibility="collapsed")
 st.sidebar.markdown("---")
-st.sidebar.caption("Ver 10.7.3 (Pro) | Update: 2026-01-16 15:05")
+st.sidebar.caption("Ver 10.7.4 (Pro) | Update: 2026-01-19 11:15")
 
 if mode == "🔍 成本神探":
     st.title("🔍 成本神探")
@@ -1166,9 +1166,13 @@ elif mode == "⚙️ 後台管理":
                     if df_sales is not None:
                         res = process_orders(df_sales, df_cost, bar)
                         time.sleep(0.5)
-                        if "成功" in res: st.success(res)
+                        if "成功" in res:
+                            st.success(res)
+                            time.sleep(1.5) # Wait for cache clear signal
+                            st.cache_data.clear()
+                            st.rerun()
                         else: st.warning(res)
-                        st.cache_data.clear()
+                        st.cache_data.clear() # Redundant safety clear
 
         with tab2:
             st.markdown("#### 🔗 特殊訂單歸戶 (信用卡/補差價/客製化)")
