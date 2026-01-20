@@ -1196,85 +1196,124 @@ elif mode == "⚙️ 後台管理":
                 st.balloons()
                 st.success("🎉 太棒了！目前所有特殊訂單都已完成歸戶。")
             else:
-                st.warning(f"目前有 {len(pending)} 筆待處理訂單：")
+            if pending.empty:
+                st.balloons()
+                st.success("🎉 太棒了！目前所有特殊訂單都已完成歸戶。")
+            else:
+                st.info(f"💡 目前有 {len(pending)} 筆待處理訂單，請直接在下方表格編輯後，點擊「批量儲存」。")
                 df_cost_ref, _ = load_cloud_cost_table()
                 
                 if df_cost_ref is not None:
                     cost_dict = pd.Series(df_cost_ref.成本.values, index=df_cost_ref.Menu_Label).to_dict()
                     options = ["請選擇對應的真實商品..."] + list(cost_dict.keys())
                     
-                    for idx, row in pending.iterrows():
-                        with st.container():
-                            st.markdown(f"""
-                            <div style="background:#f8f9fa; padding:15px; border-radius:10px; margin-bottom:10px; border:1px solid #ddd; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                                <div style="font-weight:bold; color:#d63384; font-size: 1.05rem; margin-bottom: 8px;">{row['商品名稱']}</div>
-                                <div style="background: #e7f5ff; color: #004085; padding: 4px 8px; border-radius: 4px; display: inline-block; font-weight: 600; font-size: 0.9rem; margin-bottom: 8px;">
-                                    🔹 規格: {row.get('商品選項名稱', '無規格') if row.get('商品選項名稱') else '無規格'}
-                                </div>
-                                <div style="font-size:0.85rem; color:#666; margin-top: 4px;">
-                                    訂單: <a href="https://seller.shopee.tw/portal/sale?type=all&keyword={row['訂單編號']}" target="_blank" style="text-decoration:none;color:#0d6efd;border-bottom:1px dashed #0d6efd;margin-right:5px;" title="點擊搜尋此訂單">{row['訂單編號']} �</a> 
-                                    | 金額: <span style="color: #28a745; font-weight:bold;">${row['售價']}</span>
-                                </div>
-                            </div>
-                            """, unsafe_allow_html=True)
-                            
-                            # 為了方便複製，提供 Code Block
-                            c_copy_tip, c_code = st.columns([1, 2])
-                            with c_copy_tip:
-                                st.caption("👉 若跳轉後未自動搜尋，請複製號碼：")
-                            with c_code:
-                                st.code(row['訂單編號'], language=None)
-                            
-                            c_sel, c_opt, c_act = st.columns([3, 2, 1])
-                            
-                            with c_sel:
-                                real_item = st.selectbox("選擇真實商品", options, key=f"s_{row['訂單編號']}", label_visibility="collapsed")
-                            
-                            # 取得目前選擇商品的預設成本
-                            default_cost = 0.0
+                    # 1. 準備編輯用的 DataFrame
+                    # 我們只需要幾個關鍵欄位顯示給使用者，加上要編輯的欄位
+                    df_editor = pending[['訂單成立日期', '訂單編號', '商品名稱', '商品選項名稱', '售價']].copy()
+                    
+                    # 新增編輯欄位 (預設值)
+                    df_editor['真實商品'] = "請選擇對應的真實商品..."
+                    df_editor['成本(若為0則自動帶入)'] = 0
+                    
+                    # 2. 顯示 Data Editor
+                    edited_df = st.data_editor(
+                        df_editor,
+                        column_config={
+                            "訂單成立日期": st.column_config.TextColumn("日期", disabled=True),
+                            "訂單編號": st.column_config.TextColumn("訂單編號", disabled=True),
+                            "商品名稱": st.column_config.TextColumn("蝦皮商品名稱", disabled=True, width="large"),
+                            "商品選項名稱": st.column_config.TextColumn("規格", disabled=True),
+                            "售價": st.column_config.NumberColumn("售價", disabled=True, format="$%d"),
+                            "真實商品": st.column_config.SelectboxColumn(
+                                "選擇真實商品",
+                                help="請選擇對應的進貨成本商品",
+                                width="medium",
+                                options=options,
+                                required=True
+                            ),
+                            "成本(若為0則自動帶入)": st.column_config.NumberColumn(
+                                "確認成本",
+                                help="輸入 0 系統會自動從成本表帶入預設成本",
+                                min_value=0,
+                                step=1,
+                                format="$%d"
+                            )
+                        },
+                        hide_index=True,
+                        use_container_width=True,
+                        num_rows="fixed",
+                        key="special_order_editor"
+                    )
+
+                    # 3. 批量儲存按鈕
+                    if st.button("💾 批量確認歸戶 (Save All)", type="primary", use_container_width=True):
+                        success_count = 0
+                        fail_count = 0
+                        updated_rows = 0
+                        
+                        progress_bar = st.progress(0, text="正在處理中...")
+                        
+                        # 找出有被修改過的行 (其實只要檢查 '真實商品' 不為 default 的即可)
+                        # Iterate rows to check valid selections
+                        total_rows = len(edited_df)
+                        
+                        for i, (index, row) in enumerate(edited_df.iterrows()):
+                            real_item = row['真實商品']
+                            input_cost = row['成本(若為0則自動帶入)']
+                            order_sn = row['訂單編號']
+                            shopee_name = row['商品名稱']
+                            shopee_option = row['商品選項名稱']
+
                             if real_item != "請選擇對應的真實商品...":
-                                if real_item in cost_dict:
-                                    default_cost = cost_dict[real_item]
-
-                            with c_opt:
-                                # 讓使用者可以編輯成本 (如果有誤或是0)
-                                # 技巧: 為了讓 selectbox 改變時 number_input 自動更新，我們把選擇的項目加入 key 中
-                                final_cost = st.number_input(
-                                    "確認成本", 
-                                    value=int(default_cost), 
-                                    min_value=0, 
-                                    step=1, 
-                                    format="%d",
-                                    key=f"cost_{row['訂單編號']}_{str(real_item)}", 
-                                    label_visibility="collapsed"
-                                )
-
-                            with c_act:
-                                if st.button("確認歸戶", key=f"b_{row['訂單編號']}", type="primary"):
-                                    if "請選擇" in real_item:
-                                        st.error("❌ 請選擇真實商品")
+                                updated_rows += 1
+                                
+                                # 決定最終成本
+                                final_cost = input_cost
+                                if final_cost == 0 and real_item in cost_dict:
+                                    final_cost = int(cost_dict[real_item])
+                                
+                                # 執行歸戶
+                                try:
+                                    real_sku_name = real_item.split(" |")[0].strip()
+                                    
+                                    # 讀取 row 的原始資訊 (為了 save_memory_rule)
+                                    # 其實上面已經有 shopee_name 了
+                                    
+                                    if update_special_order(order_sn, real_sku_name, final_cost, df_db, db_sheet):
+                                        # 自動記憶
+                                        if "7777" not in str(shopee_name):
+                                            save_memory_rule(client, shopee_name, shopee_option, real_sku_name, final_cost)
+                                            
+                                        # 如果使用者手動改了成本，也同步回主表? 
+                                        # 這裡邏輯保留：如果 final_cost != default_cost (user changed it), maybe update master
+                                        default_cost_ref = cost_dict.get(real_item, 0)
+                                        if final_cost != default_cost_ref and final_cost > 0:
+                                            update_master_cost_sheet(client, real_item, final_cost)
+                                            
+                                        success_count += 1
                                     else:
-                                        real_sku_name = real_item.split(" |")[0].strip()
-                                        
-                                        with st.spinner("寫入中..."):
-                                            if update_special_order(row['訂單編號'], real_sku_name, final_cost, df_db, db_sheet):
-                                                remember_me = st.session_state.get(f"chk_{row['訂單編號']}", False)
-                                                
-                                                if remember_me:
-                                                    if "7777" in str(row['商品名稱']): st.warning("⚠️ 為了安全，無法自動記憶 7777！")
-                                                    else:
-                                                        save_memory_rule(client, row['商品名稱'], row.get('商品選項名稱', ''), real_sku_name, final_cost)
-                                                
-                                                if final_cost != default_cost or default_cost == 0:
-                                                    update_master_cost_sheet(client, real_item, final_cost)
-                                                    st.toast(f"✅ 已同步更新商品成本表: ${final_cost}")
+                                        fail_count += 1
+                                        print(f"Failed to update {order_sn}")
+                                except Exception as e:
+                                    fail_count += 1
+                                    st.error(f"Error processing {order_sn}: {e}")
+                            
+                            progress_bar.progress((i + 1) / total_rows)
 
-                                                st.toast("✅ 歸戶成功！", icon="🎉")
-                                                time.sleep(1)
-                                                st.rerun()
-                                            else:
-                                                st.error("更新失敗")
-                        st.markdown("---")
+                        progress_bar.empty()
+                        
+                        if updated_rows == 0:
+                            st.warning("⚠️ 您尚未選擇任何「真實商品」，請在表格中選擇後再儲存。")
+                        else:
+                            if success_count > 0:
+                                st.success(f"✅ 成功歸戶 {success_count} 筆訂單！")
+                                if fail_count > 0:
+                                    st.error(f"❌ {fail_count} 筆處理失敗")
+                                time.sleep(1.5)
+                                st.rerun()
+                            else:
+                                st.error("❌ 更新失敗，請檢查網路或稍後再試。")
+
 
         with tab3:
             st.markdown("#### 🛠️ 商品資料批量維護")
