@@ -1192,10 +1192,7 @@ elif mode == "⚙️ 後台管理":
             )
             pending = df_db[mask]
             
-            if pending.empty:
-                st.balloons()
-                st.success("🎉 太棒了！目前所有特殊訂單都已完成歸戶。")
-            else:
+
             if pending.empty:
                 st.balloons()
                 st.success("🎉 太棒了！目前所有特殊訂單都已完成歸戶。")
