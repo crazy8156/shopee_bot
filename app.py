@@ -1192,6 +1192,7 @@ elif mode == "⚙️ 後台管理":
             )
             pending = df_db[mask]
             
+            # Check for pending orders
 
             if pending.empty:
                 st.balloons()
