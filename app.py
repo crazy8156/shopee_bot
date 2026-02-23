@@ -579,6 +579,11 @@ def process_orders(df_sales, df_cost, progress_bar):
         # Clean existing columns headers to avoid mismatch
         df_existing.columns = df_existing.columns.astype(str).str.strip().str.replace('\n', '')
         
+        # Ensure new headers like '買家備註' are injected if the database is using an old format
+        for h in headers:
+            if h not in df_existing.columns:
+                df_existing[h] = ""
+        
         # Ensure Order IDs are strings for comparison
         df_existing['訂單編號'] = df_existing['訂單編號'].astype(str).str.strip()
         df_upload_ready['訂單編號'] = df_upload_ready['訂單編號'].astype(str).str.strip()
@@ -605,7 +610,7 @@ def process_orders(df_sales, df_cost, progress_bar):
                     target_idx = df_existing.index[df_existing['訂單編號'] == order_id]
                     if not target_idx.empty:
                         # Sync crucial fields if they exist in schema
-                        sync_fields = ['訂單成立日期', '訂單狀態', '商品名稱']
+                        sync_fields = ['訂單成立日期', '訂單狀態', '商品名稱', '買家備註']
                         for field in sync_fields:
                             if field in df_existing.columns and field in row:
                                 val_str = str(row[field])
