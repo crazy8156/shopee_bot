@@ -339,7 +339,7 @@ def load_sales_report(uploaded_file):
         df.columns = df.columns.astype(str).str.strip().str.replace('\n', '')
         mapping = {'蝦皮商品編碼 (商品ID_規格ID)': '蝦皮商品編碼', '商品總價': '售價', '訂單小計 (撥款金額)': '進蝦皮錢包', '買家支付運費': '運費'}
         for col in df.columns:
-            if "撥款金額" in col or "進蝦皮錢包" in col: mapping[col] = "進蝦皮錢包"
+            if "撥款金額" in col or "進蝦皮錢包" in col or "進帳" in col: mapping[col] = "進蝦皮錢包"
             if "商品編碼" in col and "規格" in col: mapping[col] = "蝦皮商品編碼"
             if "規格名稱" in col: mapping[col] = "商品選項名稱" # 新增映射
         df.rename(columns=mapping, inplace=True)
@@ -1207,7 +1207,7 @@ elif mode == "⚙️ 後台管理":
                     
                     # 1. 準備編輯用的 DataFrame
                     # 我們只需要幾個關鍵欄位顯示給使用者，加上要編輯的欄位
-                    df_editor = pending[['訂單成立日期', '訂單編號', '商品名稱', '商品選項名稱', '售價']].copy()
+                    df_editor = pending[['訂單成立日期', '訂單編號', '商品名稱', '商品選項名稱', '進蝦皮錢包']].copy()
                     
                     # 新增編輯欄位 (預設值)
                     df_editor['真實商品'] = "請選擇對應的真實商品..."
@@ -1221,7 +1221,7 @@ elif mode == "⚙️ 後台管理":
                             "訂單編號": st.column_config.TextColumn("訂單編號", disabled=True),
                             "商品名稱": st.column_config.TextColumn("蝦皮商品名稱", disabled=True, width="large"),
                             "商品選項名稱": st.column_config.TextColumn("規格", disabled=True),
-                            "售價": st.column_config.NumberColumn("售價", disabled=True, format="$%d"),
+                            "進蝦皮錢包": st.column_config.NumberColumn("進帳", disabled=True, format="$%d"),
                             "真實商品": st.column_config.SelectboxColumn(
                                 "選擇真實商品",
                                 help="請選擇對應的進貨成本商品",
@@ -1364,7 +1364,7 @@ elif mode == "⚙️ 後台管理":
                         ).to_dict()
                         options_zero = ["請選擇對應的真實商品..."] + list(cost_dict_zero.keys())
 
-                        show_cols_zero = [c for c in ['訂單成立日期', '訂單編號', '商品名稱', '商品選項名稱', '售價'] if c in pending_zero.columns]
+                        show_cols_zero = [c for c in ['訂單成立日期', '訂單編號', '商品名稱', '商品選項名稱', '進蝦皮錢包'] if c in pending_zero.columns]
                         df_editor_zero = pending_zero[show_cols_zero].copy()
                         df_editor_zero['真實商品'] = "請選擇對應的真實商品..."
                         df_editor_zero['成本(若為0則自動帶入)'] = 0
@@ -1376,7 +1376,7 @@ elif mode == "⚙️ 後台管理":
                                 "訂單編號": st.column_config.TextColumn("訂單編號", disabled=True),
                                 "商品名稱": st.column_config.TextColumn("蝦皮商品名稱", disabled=True, width="large"),
                                 "商品選項名稱": st.column_config.TextColumn("規格", disabled=True),
-                                "售價": st.column_config.NumberColumn("售價", disabled=True, format="$%d"),
+                                "進蝦皮錢包": st.column_config.NumberColumn("進帳", disabled=True, format="$%d"),
                                 "真實商品": st.column_config.SelectboxColumn(
                                     "選擇真實商品",
                                     help="請選擇對應的進貨成本商品",
