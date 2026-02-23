@@ -342,6 +342,7 @@ def load_sales_report(uploaded_file):
             if "撥款金額" in col or "進蝦皮錢包" in col or "進帳" in col: mapping[col] = "進蝦皮錢包"
             if "商品編碼" in col and "規格" in col: mapping[col] = "蝦皮商品編碼"
             if "規格名稱" in col: mapping[col] = "商品選項名稱" # 新增映射
+            if "買家" in col and "備註" in col: mapping[col] = "買家備註"
         df.rename(columns=mapping, inplace=True)
         if '蝦皮商品編碼' in df.columns: df['蝦皮商品編碼'] = df['蝦皮商品編碼'].apply(clean_id)
         df = df.drop_duplicates()
@@ -479,7 +480,7 @@ def process_orders(df_sales, df_cost, progress_bar):
     try: db_sheet = client.open(DB_SHEET_NAME).sheet1
     except: return f"❌ 找不到資料庫：{DB_SHEET_NAME}"
     
-    headers = ['訂單編號', '訂單成立日期', '商品名稱', '商品選項名稱', '數量', '售價', '成交手續費', '金流與系統處理費', '其他服務費', '蝦皮付費總金額', '進蝦皮錢包', '成本', '總利潤', '蝦皮商品編碼', '資料備份時間', '備註']
+    headers = ['訂單編號', '訂單成立日期', '商品名稱', '商品選項名稱', '數量', '售價', '成交手續費', '金流與系統處理費', '其他服務費', '蝦皮付費總金額', '進蝦皮錢包', '成本', '總利潤', '蝦皮商品編碼', '買家備註', '資料備份時間', '備註']
     
     df_upload_ready = df_merged.copy()
     df_upload_ready['資料備份時間'] = get_taiwan_time().strftime("%Y-%m-%d %H:%M:%S")
@@ -1186,6 +1187,7 @@ elif mode == "⚙️ 後台管理":
             except: st.error("資料讀取失敗"); st.stop()
             
             if '備註' not in df_db.columns: df_db['備註'] = ""
+            if '買家備註' not in df_db.columns: df_db['買家備註'] = ""
             mask = (
                 df_db['商品名稱'].astype(str).apply(lambda x: any(sp in x for sp in SPECIAL_PRODUCTS)) & 
                 (~df_db['備註'].astype(str).str.contains("已歸戶"))
@@ -1207,7 +1209,8 @@ elif mode == "⚙️ 後台管理":
                     
                     # 1. 準備編輯用的 DataFrame
                     # 我們只需要幾個關鍵欄位顯示給使用者，加上要編輯的欄位
-                    df_editor = pending[['訂單成立日期', '訂單編號', '商品名稱', '商品選項名稱', '進蝦皮錢包']].copy()
+                    show_cols = [c for c in ['訂單成立日期', '訂單編號', '商品名稱', '商品選項名稱', '進蝦皮錢包', '買家備註'] if c in pending.columns]
+                    df_editor = pending[show_cols].copy()
                     
                     # 新增編輯欄位 (預設值)
                     df_editor['真實商品'] = "請選擇對應的真實商品..."
@@ -1222,6 +1225,7 @@ elif mode == "⚙️ 後台管理":
                             "商品名稱": st.column_config.TextColumn("蝦皮商品名稱", disabled=True, width="large"),
                             "商品選項名稱": st.column_config.TextColumn("規格", disabled=True),
                             "進蝦皮錢包": st.column_config.NumberColumn("進帳", disabled=True, format="$%d"),
+                            "買家備註": st.column_config.TextColumn("買家備註", disabled=True),
                             "真實商品": st.column_config.SelectboxColumn(
                                 "選擇真實商品",
                                 help="請選擇對應的進貨成本商品",
@@ -1335,6 +1339,8 @@ elif mode == "⚙️ 後台管理":
             if not df_db_zero.empty:
                 if '備註' not in df_db_zero.columns:
                     df_db_zero['備註'] = ""
+                if '買家備註' not in df_db_zero.columns:
+                    df_db_zero['買家備註'] = ""
                 if '成本' not in df_db_zero.columns:
                     df_db_zero['成本'] = 0
 
@@ -1364,7 +1370,7 @@ elif mode == "⚙️ 後台管理":
                         ).to_dict()
                         options_zero = ["請選擇對應的真實商品..."] + list(cost_dict_zero.keys())
 
-                        show_cols_zero = [c for c in ['訂單成立日期', '訂單編號', '商品名稱', '商品選項名稱', '進蝦皮錢包'] if c in pending_zero.columns]
+                        show_cols_zero = [c for c in ['訂單成立日期', '訂單編號', '商品名稱', '商品選項名稱', '進蝦皮錢包', '買家備註'] if c in pending_zero.columns]
                         df_editor_zero = pending_zero[show_cols_zero].copy()
                         df_editor_zero['真實商品'] = "請選擇對應的真實商品..."
                         df_editor_zero['成本(若為0則自動帶入)'] = 0
@@ -1377,6 +1383,7 @@ elif mode == "⚙️ 後台管理":
                                 "商品名稱": st.column_config.TextColumn("蝦皮商品名稱", disabled=True, width="large"),
                                 "商品選項名稱": st.column_config.TextColumn("規格", disabled=True),
                                 "進蝦皮錢包": st.column_config.NumberColumn("進帳", disabled=True, format="$%d"),
+                                "買家備註": st.column_config.TextColumn("買家備註", disabled=True),
                                 "真實商品": st.column_config.SelectboxColumn(
                                     "選擇真實商品",
                                     help="請選擇對應的進貨成本商品",
