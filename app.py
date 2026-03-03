@@ -1262,21 +1262,72 @@ elif mode == "⚙️ 後台管理":
                 st.balloons()
                 st.success("🎉 太棒了！目前所有特殊訂單都已完成歸戶。")
             else:
-                st.info(f"💡 目前有 {len(pending)} 筆待處理訂單，請直接在下方表格編輯後，點擊「批量儲存」。")
-                df_cost_ref, _ = load_cloud_cost_table()
+                st.info(f"💡 系統偵測到有 {len(pending)} 筆待處理特殊訂單，您可透過下方篩選器縮小範圍。")
                 
-                if df_cost_ref is not None:
-                    cost_dict = pd.Series(df_cost_ref.成本.values, index=df_cost_ref.Menu_Label).to_dict()
-                    options = ["請選擇對應的真實商品..."] + list(cost_dict.keys())
+                if '訂單成立日期' in pending.columns:
+                    pending['訂單成立日期_dt'] = pd.to_datetime(pending['訂單成立日期'], errors='coerce')
+                    min_d = pending['訂單成立日期_dt'].min().date() if not pending['訂單成立日期_dt'].isnull().all() else get_taiwan_time().date()
+                    max_d = pending['訂單成立日期_dt'].max().date() if not pending['訂單成立日期_dt'].isnull().all() else get_taiwan_time().date()
+                else:
+                    min_d = max_d = get_taiwan_time().date()
+                
+                # --- 日期篩選區塊 ---
+                st.markdown("##### 📅 篩選待處理訂單")
+                sc1, sc2 = st.columns([1, 2])
+                with sc1:
+                    sq1, sq2 = st.columns(2)
+                    with sq1:
+                        if st.button("今日", key="btn_sp_today", use_container_width=True):
+                            st.session_state['sp_start'] = get_taiwan_time().date()
+                            st.session_state['sp_end'] = get_taiwan_time().date()
+                        if st.button("昨日", key="btn_sp_yest", use_container_width=True):
+                            yest = get_taiwan_time().date() - timedelta(days=1)
+                            st.session_state['sp_start'] = yest
+                            st.session_state['sp_end'] = yest
+                    with sq2:
+                        if st.button("本月", key="btn_sp_tmonth", use_container_width=True):
+                            today = get_taiwan_time().date()
+                            st.session_state['sp_start'] = today.replace(day=1)
+                            st.session_state['sp_end'] = today
+                        if st.button("全部待處理", key="btn_sp_all", use_container_width=True):
+                            st.session_state['sp_start'] = min_d
+                            st.session_state['sp_end'] = max_d
+                
+                if 'sp_start' not in st.session_state: st.session_state['sp_start'] = min_d
+                if 'sp_end' not in st.session_state: st.session_state['sp_end'] = max_d
+                
+                with sc2:
+                    sd1, sd2 = st.columns(2)
+                    with sd1:
+                        sp_start = st.date_input("起始日期", value=st.session_state['sp_start'], key="sp_start_in")
+                    with sd2:
+                        sp_end = st.date_input("結束日期", value=st.session_state['sp_end'], key="sp_end_in")
+                
+                st.session_state['sp_start'] = sp_start
+                st.session_state['sp_end'] = sp_end
+
+                if '訂單成立日期_dt' in pending.columns:
+                    pending_filtered = pending[(pending['訂單成立日期_dt'].dt.date >= sp_start) & (pending['訂單成立日期_dt'].dt.date <= sp_end)]
+                else:
+                    pending_filtered = pending
+                
+                if pending_filtered.empty:
+                    st.warning(f"⚠️ 該區間 ({sp_start} ~ {sp_end}) 內目前無待歸戶的特殊訂單。")
+                else:
+                    st.success(f"📌 篩選後共有 {len(pending_filtered)} 筆特殊訂單待歸戶，請直接在下方表格編輯：")
+                    df_cost_ref, _ = load_cloud_cost_table()
                     
-                    # 1. 準備編輯用的 DataFrame
-                    # 我們只需要幾個關鍵欄位顯示給使用者，加上要編輯的欄位
-                    show_cols = [c for c in ['訂單成立日期', '訂單編號', '商品名稱', '商品選項名稱', '進蝦皮錢包', '買家備註'] if c in pending.columns]
-                    df_editor = pending[show_cols].copy()
-                    
-                    # 新增編輯欄位 (預設值)
-                    df_editor['真實商品'] = "請選擇對應的真實商品..."
-                    df_editor['成本(若為0則自動帶入)'] = 0
+                    if df_cost_ref is not None:
+                        cost_dict = pd.Series(df_cost_ref.成本.values, index=df_cost_ref.Menu_Label).to_dict()
+                        options = ["請選擇對應的真實商品..."] + list(cost_dict.keys())
+                        
+                        # 1. 準備編輯用的 DataFrame
+                        show_cols = [c for c in ['訂單成立日期', '訂單編號', '商品名稱', '商品選項名稱', '進蝦皮錢包', '買家備註'] if c in pending_filtered.columns]
+                        df_editor = pending_filtered[show_cols].copy()
+                        
+                        # 新增編輯欄位 (預設值)
+                        df_editor['真實商品'] = "請選擇對應的真實商品..."
+                        df_editor['成本(若為0則自動帶入)'] = 0
                     
                     # 2. 顯示 Data Editor
                     edited_df = st.data_editor(
@@ -1422,52 +1473,103 @@ elif mode == "⚙️ 後台管理":
                 if pending_zero.empty:
                     st.success("✅ 所有一般訂單的成本均已填寫完成！")
                 else:
-                    st.warning(f"⚠️ 共有 **{len(pending_zero)}** 筆訂單成本為 $0，請補填。")
+                    st.info(f"💡 系統偵測到有 {len(pending_zero)} 筆待處理的一般零元訂單，您可透過下方篩選器縮小範圍。")
+                    
+                    if '訂單成立日期' in pending_zero.columns:
+                        pending_zero['訂單成立日期_dt'] = pd.to_datetime(pending_zero['訂單成立日期'], errors='coerce')
+                        min_d_z = pending_zero['訂單成立日期_dt'].min().date() if not pending_zero['訂單成立日期_dt'].isnull().all() else get_taiwan_time().date()
+                        max_d_z = pending_zero['訂單成立日期_dt'].max().date() if not pending_zero['訂單成立日期_dt'].isnull().all() else get_taiwan_time().date()
+                    else:
+                        min_d_z = max_d_z = get_taiwan_time().date()
+                    
+                    # --- 一般訂單日期篩選區塊 ---
+                    st.markdown("##### 📅 篩選一般待處理訂單")
+                    zc1, zc2 = st.columns([1, 2])
+                    with zc1:
+                        zq1, zq2 = st.columns(2)
+                        with zq1:
+                            if st.button("今日", key="btn_z_today", use_container_width=True):
+                                st.session_state['z_start'] = get_taiwan_time().date()
+                                st.session_state['z_end'] = get_taiwan_time().date()
+                            if st.button("昨日", key="btn_z_yest", use_container_width=True):
+                                yest_z = get_taiwan_time().date() - timedelta(days=1)
+                                st.session_state['z_start'] = yest_z
+                                st.session_state['z_end'] = yest_z
+                        with zq2:
+                            if st.button("本月", key="btn_z_tmonth", use_container_width=True):
+                                today_z = get_taiwan_time().date()
+                                st.session_state['z_start'] = today_z.replace(day=1)
+                                st.session_state['z_end'] = today_z
+                            if st.button("全部待處理", key="btn_z_all", use_container_width=True):
+                                st.session_state['z_start'] = min_d_z
+                                st.session_state['z_end'] = max_d_z
+                    
+                    if 'z_start' not in st.session_state: st.session_state['z_start'] = min_d_z
+                    if 'z_end' not in st.session_state: st.session_state['z_end'] = max_d_z
+                    
+                    with zc2:
+                        zd1, zd2 = st.columns(2)
+                        with zd1:
+                            z_start = st.date_input("起始日期", value=st.session_state['z_start'], key="z_start_in")
+                        with zd2:
+                            z_end = st.date_input("結束日期", value=st.session_state['z_end'], key="z_end_in")
+                            
+                    st.session_state['z_start'] = z_start
+                    st.session_state['z_end'] = z_end
 
-                    df_cost_ref_zero, _ = load_cloud_cost_table()
-                    if df_cost_ref_zero is not None:
-                        cost_dict_zero = pd.Series(
-                            df_cost_ref_zero.成本.values,
-                            index=df_cost_ref_zero.Menu_Label
-                        ).to_dict()
-                        options_zero = ["請選擇對應的真實商品..."] + list(cost_dict_zero.keys())
+                    if '訂單成立日期_dt' in pending_zero.columns:
+                        pending_zero_filtered = pending_zero[(pending_zero['訂單成立日期_dt'].dt.date >= z_start) & (pending_zero['訂單成立日期_dt'].dt.date <= z_end)]
+                    else:
+                        pending_zero_filtered = pending_zero
 
-                        show_cols_zero = [c for c in ['訂單成立日期', '訂單編號', '商品名稱', '商品選項名稱', '進蝦皮錢包', '買家備註'] if c in pending_zero.columns]
-                        df_editor_zero = pending_zero[show_cols_zero].copy()
-                        df_editor_zero['真實商品'] = "請選擇對應的真實商品..."
-                        df_editor_zero['成本(若為0則自動帶入)'] = 0
+                    if pending_zero_filtered.empty:
+                        st.warning(f"⚠️ 該區間 ({z_start} ~ {z_end}) 內目前無一般零元訂單待補填。")
+                    else:
+                        st.success(f"📌 篩選後共有 {len(pending_zero_filtered)} 筆一般特殊訂單待補填，請在下方表格編輯：")
+                        df_cost_ref_zero, _ = load_cloud_cost_table()
+                        if df_cost_ref_zero is not None:
+                            cost_dict_zero = pd.Series(
+                                df_cost_ref_zero.成本.values,
+                                index=df_cost_ref_zero.Menu_Label
+                            ).to_dict()
+                            options_zero = ["請選擇對應的真實商品..."] + list(cost_dict_zero.keys())
 
-                        edited_zero = st.data_editor(
-                            df_editor_zero,
-                            column_config={
-                                "訂單成立日期": st.column_config.TextColumn("日期", disabled=True),
-                                "訂單編號": st.column_config.TextColumn("訂單編號", disabled=True),
-                                "商品名稱": st.column_config.TextColumn("蝦皮商品名稱", disabled=True, width="large"),
-                                "商品選項名稱": st.column_config.TextColumn("規格", disabled=True),
-                                "進蝦皮錢包": st.column_config.NumberColumn("進帳", disabled=True, format="$%d"),
-                                "買家備註": st.column_config.TextColumn("買家備註", disabled=True),
-                                "真實商品": st.column_config.SelectboxColumn(
-                                    "選擇真實商品",
-                                    help="請選擇對應的進貨成本商品",
-                                    width="medium",
-                                    options=options_zero,
-                                    required=True
-                                ),
-                                "成本(若為0則自動帶入)": st.column_config.NumberColumn(
-                                    "確認成本",
-                                    help="輸入 0 系統會自動從成本表帶入預設成本",
-                                    min_value=0,
-                                    step=1,
-                                    format="$%d"
-                                ),
-                            },
-                            hide_index=True,
-                            use_container_width=True,
-                            num_rows="fixed",
-                            key="zero_cost_editor"
-                        )
+                            show_cols_zero = [c for c in ['訂單成立日期', '訂單編號', '商品名稱', '商品選項名稱', '進蝦皮錢包', '買家備註'] if c in pending_zero_filtered.columns]
+                            df_editor_zero = pending_zero_filtered[show_cols_zero].copy()
+                            df_editor_zero['真實商品'] = "請選擇對應的真實商品..."
+                            df_editor_zero['成本(若為0則自動帶入)'] = 0
 
-                        if st.button("💾 批量補填成本 (Save All)", type="primary", use_container_width=True, key="save_zero_cost"):
+                            edited_zero = st.data_editor(
+                                df_editor_zero,
+                                column_config={
+                                    "訂單成立日期": st.column_config.TextColumn("日期", disabled=True),
+                                    "訂單編號": st.column_config.TextColumn("訂單編號", disabled=True),
+                                    "商品名稱": st.column_config.TextColumn("蝦皮商品名稱", disabled=True, width="large"),
+                                    "商品選項名稱": st.column_config.TextColumn("規格", disabled=True),
+                                    "進蝦皮錢包": st.column_config.NumberColumn("進帳", disabled=True, format="$%d"),
+                                    "買家備註": st.column_config.TextColumn("買家備註", disabled=True),
+                                    "真實商品": st.column_config.SelectboxColumn(
+                                        "選擇真實商品",
+                                        help="請選擇對應的進貨成本商品",
+                                        width="medium",
+                                        options=options_zero,
+                                        required=True
+                                    ),
+                                    "成本(若為0則自動帶入)": st.column_config.NumberColumn(
+                                        "確認成本",
+                                        help="輸入 0 系統會自動從成本表帶入預設成本",
+                                        min_value=0,
+                                        step=1,
+                                        format="$%d"
+                                    ),
+                                },
+                                hide_index=True,
+                                use_container_width=True,
+                                num_rows="fixed",
+                                key="zero_cost_editor"
+                            )
+
+                            if st.button("💾 批量補填成本 (Save All)", type="primary", use_container_width=True, key="save_zero_cost"):
                             success_z = 0
                             fail_z = 0
                             updated_z = 0
