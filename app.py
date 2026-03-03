@@ -16,6 +16,7 @@ COST_SHEET_NAME = "商品編碼表"       # (新表)
 LEGACY_SHEET_NAME = "蝦皮成本比對表2026" # (舊表)
 DB_SHEET_NAME = "蝦皮訂單總表"       # 銷售紀錄
 MEMORY_SHEET_NAME = "歸戶記憶庫"
+AD_COST_SHEET_NAME = "廣告費用紀錄"
 
 SPECIAL_PRODUCTS = ["7777下單信用卡專區", "chatgpt續約區", "ChatGPT", "美圖秀秀", "補運費", "補差價", "專屬賣場", "客製化", "1元賣場"] 
 
@@ -157,6 +158,53 @@ def get_gspread_client():
         st.error(f"詳細錯誤訊息：{e}")
         st.code(str(e))
         raise e
+
+# === 廣告費用庫 ===
+def get_ad_costs_df(client):
+    try:
+        try: sheet = client.open(COST_SHEET_NAME).worksheet(AD_COST_SHEET_NAME)
+        except: 
+            sh = client.open(COST_SHEET_NAME)
+            sheet = sh.add_worksheet(title=AD_COST_SHEET_NAME, rows=500, cols=3)
+            sheet.append_row(["日期", "廣告費用", "登錄時間"])
+            return pd.DataFrame(columns=["日期", "廣告費用", "登錄時間"])
+        
+        data = sheet.get_all_values()
+        if len(data) <= 1: return pd.DataFrame(columns=["日期", "廣告費用", "登錄時間"])
+        df = pd.DataFrame(data[1:], columns=data[0])
+        # Clean up
+        df['廣告費用'] = pd.to_numeric(df['廣告費用'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+        df['日期'] = pd.to_datetime(df['日期'], format='%Y-%m-%d', errors='coerce').dt.date
+        return df
+    except: return pd.DataFrame(columns=["日期", "廣告費用", "登錄時間"])
+
+def save_ad_cost(client, target_date, cost_value):
+    try:
+        try: sheet = client.open(COST_SHEET_NAME).worksheet(AD_COST_SHEET_NAME)
+        except: 
+            sheet = client.open(COST_SHEET_NAME).add_worksheet(title=AD_COST_SHEET_NAME, rows=500, cols=3)
+            sheet.append_row(["日期", "廣告費用", "登錄時間"])
+        
+        data = sheet.get_all_values()
+        target_date_str = target_date.strftime("%Y-%m-%d")
+        now_str = get_taiwan_time().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # 尋找是否已有該日期的紀錄
+        row_idx = None
+        for i, row in enumerate(data):
+            if i > 0 and len(row) > 0 and row[0] == target_date_str:
+                row_idx = i + 1
+                break
+                
+        if row_idx:
+            sheet.update_cell(row_idx, 2, cost_value)
+            sheet.update_cell(row_idx, 3, now_str)
+        else:
+            sheet.append_row([target_date_str, cost_value, now_str])
+        return True
+    except Exception as e:
+        print(f"Error saving ad cost: {e}")
+        return False
 
 # === 記憶庫 ===
 def get_memory_rules(client):
@@ -864,14 +912,23 @@ elif mode == "📊 前台戰情室":
             # 計算核心指標
             total_rev = df_normal['售價'].sum()
             total_cost = (df_normal['成本'] * df_normal['數量']).sum()
-            total_gp = df_normal['總利潤'].sum()
+            
+            # 讀取廣告費用
+            ad_df = get_ad_costs_df(client)
+            period_ad_cost = 0
+            if not ad_df.empty:
+                mask = (ad_df['日期'] >= start_date) & (ad_df['日期'] <= end_date)
+                period_ad_cost = ad_df.loc[mask, '廣告費用'].sum()
+            
+            total_gp = df_normal['總利潤'].sum() - period_ad_cost
             margin = (total_gp / total_rev * 100) if total_rev > 0 else 0
             
             # --- 視覺化指標卡片 ---
-            cols = st.columns(4)
+            cols = st.columns(5)
             metrics = [
                 ("💰 當日營收", f"${total_rev:,.0f}", ""),
                 ("📉 商品成本", f"${total_cost:,.0f}", ""),
+                ("📢 廣告費用", f"${period_ad_cost:,.0f}", ""),
                 ("💸 淨毛利", f"${total_gp:,.0f}", "核心獲利"),
                 ("📊 毛利率", f"{margin:.1f}%", "Profit Margin")
             ]
@@ -1143,7 +1200,7 @@ elif mode == "⚙️ 後台管理":
     if pwd == ADMIN_PWD:
         # 使用更美觀的 Tabs
         st.markdown("###")
-        tab1, tab2, tab3, tab4 = st.tabs(["📥 訂單上傳", "🔗 歸戶系統", "🛠️ 商品維護", "🤝 非蝦皮訂單"])
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["📥 訂單上傳", "🔗 歸戶系統", "🛠️ 商品維護", "🤝 非蝦皮訂單", "📢 廣告費用管理"])
 
         with tab1:
             st.info("請上傳蝦皮匯出的 `Order.all.xlsx` 報表，系統會自動計算成本與利潤。")
@@ -1564,6 +1621,59 @@ elif mode == "⚙️ 後台管理":
                                     st.error(f"❌ 寫入失敗: {e}")
             else:
                 st.error("❌ 無法載入成本表，無法進行手動錄入。")
+
+        with tab5:
+            st.markdown("#### 📢 廣告費用輸入與管理")
+            st.info("請輸入每天在蝦皮或站外投放廣告所產生的真實費用，這將會合併至前台戰情室計算真淨毛利。")
+            
+            # Form for input
+            client = get_gspread_client()
+            ad_df = get_ad_costs_df(client)
+            
+            with st.form("ad_cost_form", clear_on_submit=False):
+                c1, c2 = st.columns(2)
+                with c1:
+                    ad_date = st.date_input("🗓️ 廣告花費日期", value=get_taiwan_time().date())
+                
+                # Check exist ad cost
+                default_ad_cost = 0
+                if not ad_df.empty:
+                    exist_row = ad_df[ad_df['日期'] == ad_date]
+                    if not exist_row.empty:
+                        default_ad_cost = int(exist_row.iloc[0]['廣告費用'])
+                        
+                with c2:
+                    ad_cost_val = st.number_input("💰 廣告花費金額", min_value=0, value=default_ad_cost, step=50, format="%d")
+                
+                submit_ad = st.form_submit_button("💾 儲存廣告費用", type="primary", use_container_width=True)
+                
+                if submit_ad:
+                    with st.spinner("正在儲存資料..."):
+                        if save_ad_cost(client, ad_date, ad_cost_val):
+                            st.success(f"✅ 成功儲存 {ad_date.strftime('%Y-%m-%d')} 廣告費用: ${ad_cost_val}")
+                            time.sleep(1)
+                            st.cache_data.clear()
+                            st.rerun()
+                        else:
+                            st.error("❌ 儲存失敗，請檢查網路狀態或重試")
+            
+            st.divider()
+            st.markdown("##### 📜 歷史廣告費用紀錄 (近 30 筆)")
+            if not ad_df.empty:
+                # 依日期遞減排序，取前 30
+                ad_df_show = ad_df.sort_values(by="日期", ascending=False).head(30)
+                st.dataframe(
+                    ad_df_show,
+                    hide_index=True,
+                    use_container_width=True,
+                    column_config={
+                        "日期": st.column_config.DateColumn("日期", format="YYYY-MM-DD"),
+                        "廣告費用": st.column_config.NumberColumn("廣告費用", format="$%d"),
+                        "登錄時間": st.column_config.TextColumn("最後更新時間")
+                    }
+                )
+            else:
+                st.info("尚無廣告費用紀錄")
 
     elif pwd:
         st.error('⛔ 密碼錯誤')
