@@ -1570,54 +1570,54 @@ elif mode == "⚙️ 後台管理":
                             )
 
                             if st.button("💾 批量補填成本 (Save All)", type="primary", use_container_width=True, key="save_zero_cost"):
-                            success_z = 0
-                            fail_z = 0
-                            updated_z = 0
-                            bar_z = st.progress(0, text="正在處理...")
-                            total_z = len(edited_zero)
+                                success_z = 0
+                                fail_z = 0
+                                updated_z = 0
+                                bar_z = st.progress(0, text="正在處理...")
+                                total_z = len(edited_zero)
 
-                            for i, (idx_z, row_z) in enumerate(edited_zero.iterrows()):
-                                real_item_z = row_z['真實商品']
-                                input_cost_z = row_z['成本(若為0則自動帶入)']
-                                order_sn_z = row_z['訂單編號']
-                                shopee_name_z = row_z['商品名稱']
-                                shopee_opt_z = row_z.get('商品選項名稱', '')
+                                for i, (idx_z, row_z) in enumerate(edited_zero.iterrows()):
+                                    real_item_z = row_z['真實商品']
+                                    input_cost_z = row_z['成本(若為0則自動帶入)']
+                                    order_sn_z = row_z['訂單編號']
+                                    shopee_name_z = row_z['商品名稱']
+                                    shopee_opt_z = row_z.get('商品選項名稱', '')
 
-                                if real_item_z != "請選擇對應的真實商品...":
-                                    updated_z += 1
-                                    final_cost_z = input_cost_z
-                                    if final_cost_z == 0 and real_item_z in cost_dict_zero:
-                                        final_cost_z = int(cost_dict_zero[real_item_z])
+                                    if real_item_z != "請選擇對應的真實商品...":
+                                        updated_z += 1
+                                        final_cost_z = input_cost_z
+                                        if final_cost_z == 0 and real_item_z in cost_dict_zero:
+                                            final_cost_z = int(cost_dict_zero[real_item_z])
 
-                                    try:
-                                        real_sku_name_z = real_item_z.split(" |")[0].strip()
-                                        if update_special_order(order_sn_z, real_sku_name_z, final_cost_z, df_db_zero, db_sheet_zero):
-                                            save_memory_rule(client_zero, shopee_name_z, shopee_opt_z, real_sku_name_z, final_cost_z)
-                                            default_cost_z = cost_dict_zero.get(real_item_z, 0)
-                                            if final_cost_z != default_cost_z and final_cost_z > 0:
-                                                update_master_cost_sheet(client_zero, real_item_z, final_cost_z)
-                                            success_z += 1
-                                        else:
+                                        try:
+                                            real_sku_name_z = real_item_z.split(" |")[0].strip()
+                                            if update_special_order(order_sn_z, real_sku_name_z, final_cost_z, df_db_zero, db_sheet_zero):
+                                                save_memory_rule(client_zero, shopee_name_z, shopee_opt_z, real_sku_name_z, final_cost_z)
+                                                default_cost_z = cost_dict_zero.get(real_item_z, 0)
+                                                if final_cost_z != default_cost_z and final_cost_z > 0:
+                                                    update_master_cost_sheet(client_zero, real_item_z, final_cost_z)
+                                                success_z += 1
+                                            else:
+                                                fail_z += 1
+                                        except Exception as e:
                                             fail_z += 1
-                                    except Exception as e:
-                                        fail_z += 1
-                                        st.error(f"處理 {order_sn_z} 時發生錯誤：{e}")
+                                            st.error(f"處理 {order_sn_z} 時發生錯誤：{e}")
 
-                                bar_z.progress((i + 1) / total_z)
+                                    bar_z.progress((i + 1) / total_z)
 
-                            bar_z.empty()
+                                bar_z.empty()
 
-                            if updated_z == 0:
-                                st.warning("⚠️ 您尚未選擇任何「真實商品」，請在表格中選擇後再儲存。")
-                            else:
-                                if success_z > 0:
-                                    st.success(f"✅ 成功補填 {success_z} 筆訂單的成本！")
-                                if fail_z > 0:
-                                    st.error(f"❌ {fail_z} 筆處理失敗")
-                                if success_z > 0:
-                                    time.sleep(1.5)
-                                    st.cache_data.clear()
-                                    st.rerun()
+                                if updated_z == 0:
+                                    st.warning("⚠️ 您尚未選擇任何「真實商品」，請在表格中選擇後再儲存。")
+                                else:
+                                    if success_z > 0:
+                                        st.success(f"✅ 成功補填 {success_z} 筆訂單的成本！")
+                                    if fail_z > 0:
+                                        st.error(f"❌ {fail_z} 筆處理失敗")
+                                    if success_z > 0:
+                                        time.sleep(1.5)
+                                        st.cache_data.clear()
+                                        st.rerun()
                     else:
                         st.error("❌ 無法載入成本表，請確認 Google Sheet 連線。")
 
